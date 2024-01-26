@@ -18,4 +18,19 @@ class Building(BaseModel):
     data_location : str
     defect_sum : int
     each_defect_type_sum : str
-    factory_id: Object = None
+
+class Image(BaseModel):
+    image_path :str
+    stitched_location_x : float
+    stitched_location_y : float
+
+class DefectLocation(BaseModel):
+    x : float
+    y : float
+    w : float
+    h : float
+
+class Defect(BaseModel):
+    defect_class : int
+    defect_class_name : str
+

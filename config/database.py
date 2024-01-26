@@ -10,3 +10,7 @@ db = client.Roof_Surface_Website
 collection_user = db["User"]
 collection_factory = db["Factory"]
 collection_building = db["Building"]
+collection_Image = db["Image"]
+collection_DefectLocation = db["DefectLocation"]
+collection_Defect = db["Defect"]
+collection_Permission = db["Permission"]
