@@ -1,7 +1,7 @@
 from fastapi import APIRouter
-from models.modl import User,Factory,Building,Image,Defect,DefectLocation
-from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect
-from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec
+from models.modl import User,Factory,Building,Image,Defect,DefectLocation,Permission
+from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect,collection_Permission
+from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec,list_serial_permis
 from bson import ObjectId
 
 router = APIRouter()
@@ -17,6 +17,7 @@ async def get_usr_lis() :
 @router.post("/Post User")
 async def post_usr_lis(usr: User):
     collection_user.insert_one(dict(usr))
+
 
 #-----Factory-----
 # GET Request Method
@@ -51,6 +52,7 @@ async def post_build_lis(build: Building):
     build_doc = dict(build)
     build_doc['factory_id'] = factory_id
     collection_building.insert_one(build_doc)
+
 
 #-----Image-----
 building_unique = {"data_location" : "/Program/Data/BuildingA"}
@@ -99,6 +101,34 @@ async def post_defectlo_lis(defectlo: DefectLocation):
     collection_DefectLocation.insert_one(defectlocation_doc)
 
 
+#-----Permission-----
+factory_unique = {"factory_name" : "ThaiBev"}
+find_factory = collection_factory.find(factory_unique)
+
+for each_doc in find_factory:
+    factory_id = each_doc['_id']
+
+user_unique = {"username" : "Admin"}
+find_user = collection_user.find(user_unique)
+
+for each_doc in find_user:
+    user_id = each_doc['_id']
+    print(user_id)
+
+#GET Request Method
+@router.get("/Get Permission")
+async def get_permis_lis() :
+    permis_lis = list_serial_permis(collection_Permission.find())
+    return permis_lis
+
+#Post Request Method
+@router.post("/Post Permission")
+async def post_permis_lis(permis: Permission):
+    permis_doc = dict(permis)
+    permis_doc['user_id'] = user_id
+    permis_doc['factory_id'] = factory_id
+    collection_Permission.insert_one(permis_doc)
+
 #-----Defect-----
 # GET Request Method
 @router.get("/Get Defect")
@@ -109,7 +139,8 @@ async def get_defec_lis() :
 #POST Request Method
 @router.post("/Post Defect")
 async def post_defec_lis(defec: Defect):
-    collection_Defect.insert_one(dict(defec))
+    defect_doc = dict(defec)
+    collection_Defect.insert_one(_doc)
 
 # @router.put("/{id}")
 # async def put_todo(id: str, todo: Todo):

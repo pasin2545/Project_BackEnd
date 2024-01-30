@@ -35,3 +35,6 @@ class Defect(BaseModel):
     defect_class : int
     defect_class_name : str
 
+class Permission(BaseModel):
+    have_permis : bool
+

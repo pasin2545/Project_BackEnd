@@ -56,6 +56,13 @@ def individual_serial_defec(defec) -> dict:
         "defect_class_name" : defec["defect_class_name"]
     }
 
+def individual_serial_permis(permis) -> dict:
+    return{
+        "user_id" : str(permis["user_id"]),
+        "factory_id" : str(permis["factory_id"]),
+        "have_permis" : permis["have_permis"]
+    }
+
 
 def list_serial_user(usr_lis) -> list :
     return [individual_serial_user(usr) for usr in usr_lis]
@@ -74,6 +81,9 @@ def list_serial_defectlo(defectlo_lis) -> list :
 
 def list_serial_defec(defec_lis) -> list :
     return [individual_serial_defec(defec) for defec in defec_lis]
+
+def list_serial_permis(permis_list) -> list :
+    return [individual_serial_permis(permis) for permis in permis_list]
 
 
 
