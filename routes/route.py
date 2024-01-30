@@ -32,6 +32,13 @@ async def post_facto_lis(facto: Factory):
 
 
 #-----Building-----
+#Find Factory Name
+factory_unique = {"factory_name" : "ThaiBev"}
+find_factory = collection_factory.find(factory_unique)
+
+for each_doc in find_factory:
+    factory_id = each_doc['_id']
+
 # GET Request Method
 @router.get("/Get Building")
 async def get_build_lis() :
@@ -41,10 +48,17 @@ async def get_build_lis() :
 #POST Request Method
 @router.post("/Post Building")
 async def post_build_lis(build: Building):
-    collection_building.insert_one(dict(build))
-
+    build_doc = dict(build)
+    build_doc['factory_id'] = factory_id
+    collection_building.insert_one(build_doc)
 
 #-----Image-----
+building_unique = {"data_location" : "/Program/Data/BuildingA"}
+find_image = collection_building.find(building_unique)
+
+for each_doc in find_image:
+    building_id = each_doc['_id']
+
 # GET Request Method
 @router.get("/Get Image")
 async def get_image_lis() :
@@ -54,10 +68,18 @@ async def get_image_lis() :
 #POST Request Method
 @router.post("/Post Image")
 async def post_image_lis(img: Image):
-    collection_Image.insert_one(dict(img))
+    image_doc = dict(img)
+    image_doc['building_id'] = building_id
+    collection_Image.insert_one(image_doc)
 
 
 #-----DefectLocation-----
+image_unique = {"image_path" : "/Program/Data/BuildingA/img0001.jpg"}
+find_image = collection_Image.find(image_unique)
+
+for each_doc in find_image:
+    image_id = each_doc['_id']
+
 # GET Request Method
 @router.get("/Get DefectLocation")
 async def get_defectlo_lis() :
@@ -67,7 +89,14 @@ async def get_defectlo_lis() :
 #POST Request Method
 @router.post("/Post DefectLocation")
 async def post_defectlo_lis(defectlo: DefectLocation):
-    collection_DefectLocation.insert_one(dict(defectlo))
+    defectlocation_doc = dict(defectlo)
+    defectlocation_doc['image_id'] = image_id
+    class_type = defectlocation_doc['class_type']
+    class_data = collection_Defect.find({"defect_class" : class_type})
+    for each_doc in class_data:
+        class_name = each_doc['defect_class_name']
+    defectlocation_doc['class_name'] = class_name
+    collection_DefectLocation.insert_one(defectlocation_doc)
 
 
 #-----Defect-----

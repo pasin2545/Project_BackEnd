@@ -25,6 +25,7 @@ class Image(BaseModel):
     stitched_location_y : float
 
 class DefectLocation(BaseModel):
+    class_type : int
     x : float
     y : float
     w : float

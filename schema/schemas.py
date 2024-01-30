@@ -1,3 +1,5 @@
+from routes import route
+
 def individual_serial_user(usr) -> dict:
     return {
         "user_id" : str(usr["_id"]),
@@ -11,7 +13,7 @@ def individual_serial_factory(facto) -> dict:
     return {
         "factory_id" : str(facto["_id"]),
         "factory_name" : facto["factory_name"],
-        "factory_details" : facto["factory_details"],
+        "factory_details" : facto["factory_details"]
     }
 
 def individual_serial_build(build) -> dict:
@@ -24,6 +26,7 @@ def individual_serial_build(build) -> dict:
         "data_location" : build["data_location"],
         "defect_sum" : build["defect_sum"],
         "each_defect_type_sum" : build["each_defect_type_sum"],
+        "factory_id" : str(build["factory_id"])
     }
 
 def individual_serial_image(img) -> dict:
@@ -31,16 +34,20 @@ def individual_serial_image(img) -> dict:
         "image_id" : str(img["_id"]),
         "image_path" : img["image_path"],
         "stitched_location_x" : img["stitched_location_x"],
-        "stitched_location_y" : img["stitched_location_y"]
+        "stitched_location_y" : img["stitched_location_y"],
+        "building_id" : str(img["building_id"])
     }
 
 def individual_serial_defectlo(defectlo) -> dict:
     return{
         "defect_location_id" : str(defectlo["_id"]),
+        "class_type" : defectlo["class_type"],
         "x" : defectlo["x"],
         "y" : defectlo["y"],
         "w" : defectlo["w"],
-        "h" : defectlo["h"]
+        "h" : defectlo["h"],
+        "image_id" : str(defectlo["image_id"]),
+        "class_name" : str(defectlo["class_name"])
     }
 
 def individual_serial_defec(defec) -> dict:
@@ -67,4 +74,8 @@ def list_serial_defectlo(defectlo_lis) -> list :
 
 def list_serial_defec(defec_lis) -> list :
     return [individual_serial_defec(defec) for defec in defec_lis]
+
+
+
+
 
