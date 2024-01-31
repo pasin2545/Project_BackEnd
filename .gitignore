@@ -1,2 +1,4 @@
 /.venv
+/__pycache__
 /best.pt
+routes/__pycache__/route.cpython-311.pyc
