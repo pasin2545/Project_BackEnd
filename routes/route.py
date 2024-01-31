@@ -3,6 +3,7 @@ from models.modl import User,Factory,Building,Image,Defect,DefectLocation,Permis
 from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect,collection_Permission
 from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec,list_serial_permis
 from bson import ObjectId
+from getPosition import Xn,Yn,Heighthn,Weighthn,clazz
 
 router = APIRouter()
 
@@ -78,6 +79,9 @@ async def post_image_lis(img: Image):
 #-----DefectLocation-----
 image_unique = {"image_path" : "/Program/Data/BuildingA/img0001.jpg"}
 find_image = collection_Image.find(image_unique)
+
+#get position's image path
+image_path = "006783.jpg"
 
 for each_doc in find_image:
     image_id = each_doc['_id']
