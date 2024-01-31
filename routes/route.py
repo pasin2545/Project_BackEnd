@@ -3,7 +3,17 @@ from models.modl import User,Factory,Building,Image,Defect,DefectLocation,Permis
 from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect,collection_Permission
 from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec,list_serial_permis
 from bson import ObjectId
-from getPosition import Xn,Yn,Heighthn,Weighthn,clazz
+
+import ultralytics
+import torch
+import torchvision
+from ultralytics import YOLO
+import os
+import cv2
+from ultralytics.utils.plotting import Annotator
+import numpy as np
+import time
+import json
 
 router = APIRouter()
 
@@ -80,13 +90,16 @@ async def post_image_lis(img: Image):
 image_unique = {"image_path" : "/Program/Data/BuildingA/img0001.jpg"}
 find_image = collection_Image.find(image_unique)
 
-#get position's image path
-image_path = "006783.jpg"
+#get position's image path and model path
+img_path = os.path.join('006783.jpg')
+model_path = os.path.join('best.pt')
+model = YOLO(model_path)
+cap = cv2.VideoCapture(img_path)
 
 for each_doc in find_image:
     image_id = each_doc['_id']
 
-# GET Request Method
+# GET Request Method by image_id
 @router.get("/Get DefectLocation")
 async def get_defectlo_lis() :
     defectlo_lis = list_serial_defectlo(collection_DefectLocation.find())
@@ -95,14 +108,56 @@ async def get_defectlo_lis() :
 #POST Request Method
 @router.post("/Post DefectLocation")
 async def post_defectlo_lis(defectlo: DefectLocation):
-    defectlocation_doc = dict(defectlo)
-    defectlocation_doc['image_id'] = image_id
-    class_type = defectlocation_doc['class_type']
-    class_data = collection_Defect.find({"defect_class" : class_type})
-    for each_doc in class_data:
-        class_name = each_doc['defect_class_name']
-    defectlocation_doc['class_name'] = class_name
-    collection_DefectLocation.insert_one(defectlocation_doc)
+    while True:
+        ret, img = cap.read()
+    
+        if not ret: 
+            break
+    
+        results = model.predict(img)
+
+        for r in results:
+            annotator = Annotator(img,font_size=0.1)
+        
+            boxes = r.boxes
+            for box in boxes:
+                f = box.xywhn[0]
+                Xn = float(f[0])
+                Yn = float(f[1])
+                Weighthn = float(f[2])
+                Heighthn = float(f[3])
+
+                g = box.cls[0]
+                clazz = int(g)
+            
+                #defect dict
+                predict_defect_dict = {
+                     "Class": clazz,
+                     "X": Xn,
+                     "Y": Yn,
+                     "W": Weighthn,
+                     "H": Heighthn
+                }
+
+                #defectlocation open dict
+                defectlocation_doc = dict(defectlo)
+                defectlocation_doc['class_type'] = predict_defect_dict['Class']
+                defectlocation_doc['x'] = predict_defect_dict['X']
+                defectlocation_doc['y'] = predict_defect_dict['Y']
+                defectlocation_doc['w'] = predict_defect_dict['W']
+                defectlocation_doc['h'] = predict_defect_dict['H']
+                defectlocation_doc['image_id'] = image_id
+                class_type = defectlocation_doc['class_type']
+                class_data = collection_Defect.find({"defect_class" : class_type})
+                for each_doc in class_data:
+                    class_name = each_doc['defect_class_name']
+                defectlocation_doc['class_name'] = class_name
+                collection_DefectLocation.insert_one(defectlocation_doc)
+                defectlocation_doc.clear()
+        img = annotator.result()
+
+    cap.release()
+    cv2.destroyAllWindows()
 
 
 #-----Permission-----
