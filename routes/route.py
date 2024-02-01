@@ -159,7 +159,16 @@ async def post_defectlo_lis(defectlo: DefectLocation):
     cap.release()
     cv2.destroyAllWindows()
 
-
+# Delete Request Method
+@router.delete("/{image_id}")
+async def delete_defectlo_lis(image_id: str):
+    defectloc_image = collection_DefectLocation.find({"image_id": ObjectId(image_id)})
+    
+    for each_doc in defectloc_image:
+        defectlo_id = each_doc['_id']
+        collection_DefectLocation.find_one_and_delete({"_id": defectlo_id})
+    
+    
 #-----Permission-----
 factory_unique = {"factory_name" : "ThaiBev"}
 find_factory = collection_factory.find(factory_unique)
