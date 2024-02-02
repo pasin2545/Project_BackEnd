@@ -43,6 +43,11 @@ async def get_facto_lis() :
 async def post_facto_lis(facto: Factory):
     collection_factory.insert_one(dict(facto))
 
+#Delete Factory and delete every thing about it.
+@router.delete("/{id}")
+async def delete_todo(id:str):
+    collection_name.find_one_and_delete({"_id": ObjectId(id)})
+
 
 #-----Building-----
 #Find Factory Name
@@ -106,11 +111,17 @@ async def post_image_lis(img: Image):
 
 
 #-----DefectLocation-----
-# GET Request Method by image_id
+# GET Request Method by image_path
 @router.get("/Get DefectLocation")
 async def get_defectlo_lis(image_path_for_defect : str) :
-    
-    defectlo_lis = list_serial_defectlo(collection_DefectLocation.find())
+    image_path = {'image_path' : image_path_for_defect}
+    which_image = collection_Image.find(image_path)
+
+    for just_one_image in which_image:
+        which_image_id = just_one_image['_id']
+
+    image_id_in_defect = {'image_id' : which_image_id}
+    defectlo_lis = list_serial_defectlo(collection_DefectLocation.find(image_id_in_defect))
     return defectlo_lis
 
 #POST Request Method for redefine the defect square
@@ -191,7 +202,7 @@ async def post_defectlo_lis_model():
     cap.release()
     cv2.destroyAllWindows()
 
-# Delete Request Method
+# Delete Request Method for redefind defect by image_id
 @router.delete("/{image_id}")
 async def delete_defectlo_lis(image_id: str):
     defectloc_image = collection_DefectLocation.find({"image_id": ObjectId(image_id)})
