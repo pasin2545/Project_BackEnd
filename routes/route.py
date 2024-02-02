@@ -3,6 +3,7 @@ from models.modl import User,Factory,Building,Image,Defect,DefectLocation,Permis
 from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect,collection_Permission
 from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec,list_serial_permis
 from bson import ObjectId
+from typing import List
 
 import ultralytics
 import torch
@@ -72,11 +73,29 @@ find_image = collection_building.find(building_unique)
 for each_doc in find_image:
     building_id = each_doc['_id']
 
-# GET Request Method
+# GET Request Method for image when need to show image which have defect
 @router.get("/Get Image")
-async def get_image_lis() :
-    img_lis = list_serial_image(collection_Image.find())
-    return img_lis
+async def get_image_lis(building_data_location : str) :
+    image_path_list = []
+
+    building_data = {"data_location" : building_data_location}
+    which_building = collection_building.find(building_data)
+    for just_one_building in which_building:
+        which_building_id = just_one_building['_id']
+
+        find_image_by_building_id = {'building_id' : ObjectId(which_building_id)}
+        which_image = collection_Image.find(find_image_by_building_id)
+        for each_image in which_image:
+            defect_count = 0 
+            which_image_id = each_image['_id']
+            find_defectlo_by_image_id = {'image_id' : ObjectId(which_image_id)}
+            have_defect = (collection_DefectLocation.find(find_defectlo_by_image_id))
+            defect_count = have_defect.count()
+            if defect_count > 0 :
+                which_image_path = each_image['image_path']
+                image_path_list.append({"image_path": which_image_path})
+
+    return image_path_list
 
 #POST Request Method
 @router.post("/Post Image")
@@ -87,27 +106,51 @@ async def post_image_lis(img: Image):
 
 
 #-----DefectLocation-----
-image_unique = {"image_path" : "/Program/Data/BuildingA/img0001.jpg"}
-find_image = collection_Image.find(image_unique)
-
-#get position's image path and model path
-img_path = os.path.join('006783.jpg')
-model_path = os.path.join('best.pt')
-model = YOLO(model_path)
-cap = cv2.VideoCapture(img_path)
-
-for each_doc in find_image:
-    image_id = each_doc['_id']
-
 # GET Request Method by image_id
 @router.get("/Get DefectLocation")
-async def get_defectlo_lis() :
+async def get_defectlo_lis(image_path_for_defect : str) :
+    
     defectlo_lis = list_serial_defectlo(collection_DefectLocation.find())
     return defectlo_lis
 
-#POST Request Method
-@router.post("/Post DefectLocation")
-async def post_defectlo_lis(defectlo: DefectLocation):
+#POST Request Method for redefine the defect square
+@router.post("/Post DefectLocation for Redefine")
+async def post_defectlo_lis_redefine(defectlos: List[DefectLocation]):
+    image_unique = {"image_path" : "/Program/Data/BuildingA/img0001.jpg"}
+    find_image = collection_Image.find(image_unique)
+
+    for each_doc in find_image:
+        image_id = each_doc['_id']
+
+    for defectlo in defectlos:
+        defectlocation_doc = dict(defectlo)
+        defectlocation_doc['image_id'] = image_id
+        class_type = defectlocation_doc['class_type']
+        class_data = collection_Defect.find({"defect_class" : class_type})
+        for each_doc in class_data:
+            class_name = each_doc['defect_class_name']
+        defectlocation_doc['class_name'] = class_name
+        collection_DefectLocation.insert_one(defectlocation_doc)
+        defectlocation_doc.clear()
+
+
+#POST Request Method for use model detection
+image_unique = {"image_path" : "/Program/Data/BuildingA/img0003.jpg"}
+#Use image path for parameter
+@router.post("/Post DefectLocation for Model")
+async def post_defectlo_lis_model():
+
+    #get position's image path and model path
+    img_path = os.path.join('000001.jpg')
+    model_path = os.path.join('best.pt')
+    model = YOLO(model_path)
+    cap = cv2.VideoCapture(img_path)
+
+    find_image = collection_Image.find(image_unique)
+
+    for each_doc in find_image:
+        image_id = each_doc['_id']
+
     while True:
         ret, img = cap.read()
     
@@ -130,22 +173,11 @@ async def post_defectlo_lis(defectlo: DefectLocation):
                 g = box.cls[0]
                 clazz = int(g)
             
-                #defect dict
-                predict_defect_dict = {
-                     "Class": clazz,
-                     "X": Xn,
-                     "Y": Yn,
-                     "W": Weighthn,
-                     "H": Heighthn
-                }
+                defect_location = DefectLocation(class_type=clazz, x=Xn, y=Yn, w=Weighthn, h=Heighthn)
 
-                #defectlocation open dict
-                defectlocation_doc = dict(defectlo)
-                defectlocation_doc['class_type'] = predict_defect_dict['Class']
-                defectlocation_doc['x'] = predict_defect_dict['X']
-                defectlocation_doc['y'] = predict_defect_dict['Y']
-                defectlocation_doc['w'] = predict_defect_dict['W']
-                defectlocation_doc['h'] = predict_defect_dict['H']
+                # Convert DefectLocation instance to dictionary
+                defectlocation_doc = defect_location.dict()
+
                 defectlocation_doc['image_id'] = image_id
                 class_type = defectlocation_doc['class_type']
                 class_data = collection_Defect.find({"defect_class" : class_type})
