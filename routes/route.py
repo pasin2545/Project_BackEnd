@@ -44,9 +44,9 @@ async def post_facto_lis(facto: Factory):
     collection_factory.insert_one(dict(facto))
 
 #Delete Factory and delete every thing about it.
-@router.delete("/{id}")
-async def delete_todo(id:str):
-    collection_name.find_one_and_delete({"_id": ObjectId(id)})
+# @router.delete("/{id}")
+# async def delete_todo(id:str):
+#     collection_name.find_one_and_delete({"_id": ObjectId(id)})
 
 
 #-----Building-----
@@ -109,6 +109,18 @@ async def post_image_lis(img: Image):
     image_doc['building_id'] = building_id
     collection_Image.insert_one(image_doc)
 
+# Delete Request Method for image
+@router.delete("/{image_path}")
+async def delete_image_lis(image_path_delete : str):
+    find_image_by_image_path = {'image_path' : image_path_delete}
+    which_image = collection_Image.find(find_image_by_image_path)
+
+    for that_image in which_image:
+        which_image_id = that_image['_id']
+        print(which_image_id)
+        await delete_defectlo_lis(str(which_image_id))
+        collection_Image.find_one_and_delete({'_id' : which_image_id})
+
 
 #-----DefectLocation-----
 # GET Request Method by image_path
@@ -152,7 +164,7 @@ image_unique = {"image_path" : "/Program/Data/BuildingA/img0003.jpg"}
 async def post_defectlo_lis_model():
 
     #get position's image path and model path
-    img_path = os.path.join('000001.jpg')
+    img_path = os.path.join('006783.jpg')
     model_path = os.path.join('best.pt')
     model = YOLO(model_path)
     cap = cv2.VideoCapture(img_path)
@@ -205,6 +217,7 @@ async def post_defectlo_lis_model():
 # Delete Request Method for redefind defect by image_id
 @router.delete("/{image_id}")
 async def delete_defectlo_lis(image_id: str):
+    print(image_id)
     defectloc_image = collection_DefectLocation.find({"image_id": ObjectId(image_id)})
     
     for each_doc in defectloc_image:
@@ -224,7 +237,6 @@ find_user = collection_user.find(user_unique)
 
 for each_doc in find_user:
     user_id = each_doc['_id']
-    print(user_id)
 
 #GET Request Method
 @router.get("/Get Permission")
