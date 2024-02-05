@@ -4,6 +4,7 @@ class User(BaseModel):
     username : str
     password : str
     is_admin : bool
+    is_verified : bool
     user_verification_file_path : str
 
 class Factory(BaseModel):
@@ -18,11 +19,14 @@ class Building(BaseModel):
     data_location : str
     defect_sum : int
     each_defect_type_sum : str
+    factory_name : str
+    factory_details : str
 
 class Image(BaseModel):
     image_path :str
     stitched_location_x : float
     stitched_location_y : float
+    building_path : str
 
 class DefectLocation(BaseModel):
     class_type : int
@@ -37,4 +41,7 @@ class Defect(BaseModel):
 
 class Permission(BaseModel):
     have_permis : bool
+    username : str
+    factory_name : str
+    factory_details : str
 

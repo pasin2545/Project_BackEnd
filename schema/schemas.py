@@ -6,6 +6,7 @@ def individual_serial_user(usr) -> dict:
         "username" : usr["username"],
         "password" : usr["password"],
         "is_admin" : usr["is_admin"],
+        "is_verified" : usr["is_verified"],
         "user_verification_file_path" : usr["user_verification_file_path"]
     }
 
