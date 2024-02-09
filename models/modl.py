@@ -1,10 +1,10 @@
 from pydantic import BaseModel,Field
 
 class User(BaseModel):
-    username : str
-    password : str
-    is_admin : bool
-    is_verified : bool
+    username : str = Field(max_length=20)
+    password : str 
+    is_admin : bool = False
+    is_verified : bool = False
     user_verification_file_path : str
 
 class Factory(BaseModel):

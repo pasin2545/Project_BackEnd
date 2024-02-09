@@ -1,11 +1,17 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, Request
 from models.modl import User,Factory,Building,Image,Defect,DefectLocation,Permission
 from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect,collection_Permission
 from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec,list_serial_permis
 from bson import ObjectId
-from typing import List
+from typing import List, Annotated
 import asyncio
-from fastapi import HTTPException
+from passlib.context import CryptContext
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from jose import jwt, JWTError
+from datetime import timedelta, datetime
+from pydantic import BaseModel
+from starlette import status
+from config.database import db
 
 import ultralytics
 import torch
@@ -18,8 +24,126 @@ import numpy as np
 import time
 import json
 
-router = APIRouter()
+router = APIRouter(
+    prefix='/auth',
+    tags=['auth']
+)
 
+SECRET_KEY = 'Roof_Surface'
+ALGORITHM = 'HS256'
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl='auth/token')
+
+#-------------------------------------------------------Auth-------------------------------------------------------
+
+class CreateUserRequest(BaseModel):
+    username: str
+    password: str
+    verified_file_path: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+def create_user(user: User):
+    hashed_password = pwd_context.hash(user.password)
+    user.password = hashed_password
+    collection_user.insert_one(user.dict())
+
+def get_db():
+    try:
+        yield db
+    finally:
+        db.close()
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_user(username: str):
+    user_data = collection_user.find_one({"username": username})
+    if user_data:
+        return User(**user_data)
+
+def authenticate_user(username: str, password: str):
+    user = get_user(username)
+    if not user or not verify_password(password, user.password):
+        return False
+    return user
+
+def create_access_token(data: dict, expires_delta: timedelta):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + expires_delta
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+@router.post("/sign_up", status_code=status.HTTP_201_CREATED)
+async def sign_up(create_user_request: CreateUserRequest):
+    create_user_model = User(
+        username=create_user_request.username,
+        password=create_user_request.password,
+        user_verification_file_path=create_user_request.verified_file_path
+    )
+    create_user(create_user_model)
+    return {"message": "User created successfully"}
+    
+@router.post("/token", response_model=Token)
+async def login(username: str, password: str):
+    user = authenticate_user(username, password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user = get_user(username)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    print(username)
+    print(user)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+@router.get("/users/me", response_model=dict)
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    if not current_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return current_user
+
+@router.get("/users/me2", response_model=User)
+async def read_users_me2():
+    auth_header = Request.headers.get('Authorization')
+    token = auth_header.split(" ")[1]
+    re = Depends(get_current_user(token))
+    return re
 #-------------------------------------------------------User-------------------------------------------------------
 #GET Request Method for verified user
 @router.get("/Get User Verified")
@@ -32,11 +156,6 @@ async def get_usr_verified() :
 async def get_usr_unverified() :
     usr_lis = list_serial_user(collection_user.find({'is_verified' : False}))
     return usr_lis
-
-#POST Request Method
-@router.post("/Post User")
-async def post_usr_lis(usr: User):
-    collection_user.insert_one(dict(usr))
 
 #PUT Request Method for verified user
 @router.put("/put_verified")
