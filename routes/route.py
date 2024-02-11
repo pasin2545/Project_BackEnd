@@ -64,7 +64,10 @@ def get_user(username: str):
 
 def authenticate_user(username: str, password: str):
     user = get_user(username)
+    user_verified = collection_user.find_one({'username' : username})
     if not user or not verify_password(password, user.password):
+        return False
+    if user_verified['is_verified'] == False :
         return False
     return user
 
@@ -113,7 +116,7 @@ async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]) -> T
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="The identity has not been verified or Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
