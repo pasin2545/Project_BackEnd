@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+#coding: utf-8
+from fastapi import APIRouter, Depends, HTTPException, Request, File, UploadFile
 from models.modl import User,Factory,Building,Image,Defect,DefectLocation,Permission
 from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect,collection_Permission
 from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec,list_serial_permis
@@ -12,7 +13,7 @@ from datetime import timedelta, datetime
 from pydantic import BaseModel
 from starlette import status
 from config.database import db
-
+import shutil
 
 import ultralytics
 import torch
@@ -26,7 +27,6 @@ import time
 import json
 
 router = APIRouter()
-
 
 SECRET_KEY = 'Roof_Surface'
 ALGORITHM = 'HS256'
@@ -100,8 +100,23 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
         raise credentials_exception
     return user
 
+@router.post("/upload_user_file")
+async def upload_file(file:UploadFile = File(...)):
+    os.makedirs("user_file_verified", exist_ok=True)
+    try :
+        contents = await file.read()
+        with open(f"user_file_verified/{file.filename}","wb") as f:
+            f.write(contents)
+    except Exception:
+        return {"message": "There was an error uploading the file"}
+    finally:
+        await file.close()
+
+    return {"path": f"user_file_verified/{file.filename}"}
+
 @router.post("/sign_up", status_code=status.HTTP_201_CREATED)
 async def sign_up(create_user_request: CreateUserRequest):
+
     create_user_model = User(
         username=create_user_request.username,
         password=create_user_request.password,
@@ -155,11 +170,16 @@ async def put_user_verified(verified : bool,username_veri : str):
 
 #PUT Request Method for change password
 @router.put("/put_change_password")
-async def put_user_password(password : str, username_change : str):
+async def put_user_password(username_change : str, old_password : str ,new_password : str, ):
     who_user = collection_user.find_one({'username' : username_change})
-
+    
     if who_user:
-        collection_user.update_one({'username' : username_change},{'$set': {'password' : password}})
+        if verify_password(old_password, who_user['password']):
+            hashed_password = pwd_context.hash(new_password)
+            collection_user.update_one({'username' : username_change},{'$set': {'password' : hashed_password}})
+            return {"message": "Password updated successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="Old password is incorrect")
     else:
         raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
 
