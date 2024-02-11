@@ -19,8 +19,7 @@ class Building(BaseModel):
     data_location : str
     defect_sum : int
     each_defect_type_sum : str
-    factory_name : str
-    factory_details : str
+    factory_id : str
 
 class Image(BaseModel):
     image_path :str

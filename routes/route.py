@@ -3,7 +3,7 @@ from models.modl import User,Factory,Building,Image,Defect,DefectLocation,Permis
 from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect,collection_Permission
 from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec,list_serial_permis
 from bson import ObjectId
-from typing import List, Annotated
+from typing import List, Annotated, Optional
 import asyncio
 from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
@@ -12,6 +12,7 @@ from datetime import timedelta, datetime
 from pydantic import BaseModel
 from starlette import status
 from config.database import db
+
 
 import ultralytics
 import torch
@@ -24,42 +25,37 @@ import numpy as np
 import time
 import json
 
-router = APIRouter(
-    prefix='/auth',
-    tags=['auth']
-)
+router = APIRouter()
+
 
 SECRET_KEY = 'Roof_Surface'
 ALGORITHM = 'HS256'
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl='auth/token')
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')
 
 #-------------------------------------------------------Auth-------------------------------------------------------
-
-class CreateUserRequest(BaseModel):
-    username: str
-    password: str
-    verified_file_path: str
 
 class Token(BaseModel):
     access_token: str
     token_type: str
 
+class TokenData(BaseModel):
+    username: str | None = None
+
+class CreateUserRequest(BaseModel):
+    username: str
+    password : str
+    verified_file_path: str
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
 def create_user(user: User):
     hashed_password = pwd_context.hash(user.password)
     user.password = hashed_password
     collection_user.insert_one(user.dict())
-
-def get_db():
-    try:
-        yield db
-    finally:
-        db.close()
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
 
 def get_user(username: str):
     user_data = collection_user.find_one({"username": username})
@@ -72,12 +68,34 @@ def authenticate_user(username: str, password: str):
         return False
     return user
 
-def create_access_token(data: dict, expires_delta: timedelta):
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + expires_delta
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else: 
+        expire = datetime.utcnow() + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        token_data = TokenData(username=username)
+    except JWTError:
+        raise credentials_exception
+    user = get_user(username = token_data.username)
+    if user is None:
+        raise credentials_exception
+    return user
 
 @router.post("/sign_up", status_code=status.HTTP_201_CREATED)
 async def sign_up(create_user_request: CreateUserRequest):
@@ -89,9 +107,9 @@ async def sign_up(create_user_request: CreateUserRequest):
     create_user(create_user_model)
     return {"message": "User created successfully"}
     
-@router.post("/token", response_model=Token)
-async def login(username: str, password: str):
-    user = authenticate_user(username, password)
+@router.post("/token")
+async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]) -> Token:
+    user = authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -100,59 +118,24 @@ async def login(username: str, password: str):
         )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": username}, expires_delta=access_token_expires
+        data={"sub": form_data.username}, expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return Token(access_token =  access_token, token_type = "bearer")
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        if payload is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        username: str = payload.get("sub")
-        if username is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Could not validate credentials",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    user = get_user(username)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    print(username)
-    print(user)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
-
-@router.get("/users/me", response_model=dict)
-async def read_users_me(current_user: User = Depends(get_current_user)):
-    if not current_user:
-        raise HTTPException(status_code=404, detail="User not found")
+@router.get("/users/me/", response_model=User)
+async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]):
 
     return current_user
-
-@router.get("/users/me2", response_model=User)
-async def read_users_me2():
-    auth_header = Request.headers.get('Authorization')
-    token = auth_header.split(" ")[1]
-    re = Depends(get_current_user(token))
-    return re
 #-------------------------------------------------------User-------------------------------------------------------
+
 #GET Request Method for verified user
-@router.get("/Get User Verified")
+@router.get("/get_user_verified")
 async def get_usr_verified() :
     usr_lis = list_serial_user(collection_user.find({'is_verified' : True}))
     return usr_lis
 
 #GET Request Method for unverified user
-@router.get("/Get User Unverified")
+@router.get("/get_user_unverified")
 async def get_usr_unverified() :
     usr_lis = list_serial_user(collection_user.find({'is_verified' : False}))
     return usr_lis
@@ -185,16 +168,27 @@ async def delete_user(username_delete : str) :
 
 
 #-------------------------------------------------------Factory-------------------------------------------------------
+
+# GET Request Method for factory information
+@router.get("/get_factory_info")
+async def get_facto_info(facto_id : str):
+    facto_info = collection_factory.find_one({'_id': ObjectId(facto_id)})
+    if facto_info:
+        facto_info['_id'] = str(facto_info['_id'])
+        return facto_info
+
+
 # GET Request Method for admin look factory
-@router.get("/Get Admin Factory")
+@router.get("/get_admin_factory")
 async def get_facto_lis() :
     facto_lis = list_serial_factory(collection_factory.find())
     return facto_lis
 
 #GET Request Method for user
-@router.get("/Get User Factory")
+@router.get("/get_user_factory")
 async def get_usr_facto_lis(username : str) :
-    facto_lis = []
+    factories_list = []
+    
 
     who_user = collection_user.find_one({'username' : username})
     who_user_id = who_user['_id']
@@ -202,16 +196,30 @@ async def get_usr_facto_lis(username : str) :
     which_permis = collection_Permission.find({'user_id' : ObjectId(who_user_id)})
 
     for each_permis in which_permis:
-
-        each_permis_factory_id = each_permis['factory_id']
+        
+        each_permis_factory_id = str(each_permis['factory_id'])
         find_factory = collection_factory.find_one({'_id': ObjectId(each_permis_factory_id)})
-        find_factory['_id'] = str(find_factory['_id'])
-        facto_lis.append(find_factory)
+        factory_name = find_factory['factory_name']
+        buildings_lis = []
 
-    return facto_lis
+        find_building = collection_building.find({'factory_id' : ObjectId(each_permis_factory_id)})
+        for each_building in find_building:
+            building_name = each_building['building_name']
+            building_id = str(each_building['_id'])
+            buildings_lis.append({
+                'building_name': building_name,
+                'building_id': building_id
+            })
+        factories_list.append({
+            "factory_name": factory_name,
+            "factory_id" : each_permis_factory_id,
+            "buildings": buildings_lis
+        })
+
+    return factories_list
 
 #POST Request Method
-@router.post("/Post Factory")
+@router.post("/post_factory")
 async def post_facto_lis(facto: Factory):
     collection_factory.insert_one(dict(facto))
 
@@ -235,26 +243,36 @@ async def delete_facto(factory_delete_name : str, factory_delete_details : str):
     
 
 #-------------------------------------------------------Building--------------------------------------------------------
+
+# GET Request Method for factory information
+@router.get("/get_building_info")
+async def get_build_info(build_id : str):
+    obj_id = ObjectId(build_id)
+    build_info = collection_building.find_one({'_id': obj_id})
+    if build_info:
+        build_info['_id'] = str(build_info['_id'])
+        build_info['factory_id'] = str(build_info['factory_id'])
+        return build_info
+
 # GET Request Method for user
-@router.get("/Get Building")
+@router.get("/get_building")
 async def get_build_lis() :
     build_lis = list_serial_build(collection_building.find())
     return build_lis
 
 #POST Request Method
-@router.post("/Post Building")
+@router.post("/post_building")
 async def post_build_lis(build: Building):
     build_doc = dict(build)
-    factory_post_name = build_doc['factory_name']
-    factory_post_details = build_doc['factory_details']
-    which_factory = {'$and' : [{'factory_name' : factory_post_name},{'factory_details' : factory_post_details}]}
-    find_factory = collection_factory.find_one(which_factory)
+    # factory_id = build_doc['factory_id']
+    # which_factory = {'$and' : [{'factory_name' : factory_post_name},{'factory_details' : factory_post_details}]}
+    # which_factory = {"_id" : ObjectId(factory_id)}
+    # find_factory = collection_factory.find_one(which_factory)
+    # which_factory_id = find_factory['_id']
 
-    which_factory_id = find_factory['_id']
-
-    build_doc['factory_id'] = which_factory_id #factory_id
-    build_doc.pop('factory_name' , None)
-    build_doc.pop('factory_details' , None)
+    # build_doc['factory_id'] = which_factory #factory_id
+    # build_doc.pop('factory_name' , None)
+    # build_doc.pop('factory_details' , None)
     collection_building.insert_one(build_doc)
 
 #Delete Building and all about it
@@ -278,7 +296,7 @@ async def delete_building(building_delete_path : str):
 #-------------------------------------------------------Image-------------------------------------------------------
 
 # GET Request Method for image when need to show image which have defect
-@router.get("/Get Image")
+@router.get("/get_image")
 async def get_image_lis(building_data_location : str) :
     image_path_list = []
 
@@ -302,7 +320,7 @@ async def get_image_lis(building_data_location : str) :
     return image_path_list
 
 #POST Request Method
-@router.post("/Post Image")
+@router.post("/post_image")
 async def post_image_lis(img: Image):
     image_doc = dict(img)
     building_post_path = image_doc['building_path']
@@ -335,7 +353,7 @@ async def delete_image_lis(image_path_delete : str):
 
 #-------------------------------------------------------DefectLocation-------------------------------------------------------
 # GET Request Method by image_path
-@router.get("/Get DefectLocation")
+@router.get("/get_defectLocation")
 async def get_defectlo_lis(image_path_for_defect : str) :
     image_path = {'image_path' : image_path_for_defect}
     which_image = collection_Image.find(image_path)
@@ -348,7 +366,7 @@ async def get_defectlo_lis(image_path_for_defect : str) :
     return defectlo_lis
 
 #POST Request Method for redefine the defect square
-@router.post("/Post DefectLocation for Redefine")
+@router.post("/post_defectLocation_for_redefine")
 async def post_defectlo_lis_redefine(defectlos: List[DefectLocation], image_post_path : str):
     image_unique = {"image_path" : image_post_path}
     find_image = collection_Image.find(image_unique)
@@ -370,7 +388,7 @@ async def post_defectlo_lis_redefine(defectlos: List[DefectLocation], image_post
 
 #POST Request Method for use model detection
 #Use image path for parameter
-@router.post("/Post DefectLocation for Model")
+@router.post("/post_defectLocation_for_model")
 async def post_defectlo_lis_model(image_model_path : str):
 
     #get position's image path and model path
@@ -436,13 +454,46 @@ async def delete_defectlo_lis(image_id: str):
     
 #-------------------------------------------------------Permission-------------------------------------------------------
 #GET Request Method
-@router.get("/Get Permission")
-async def get_permis_lis() :
-    permis_lis = list_serial_permis(collection_Permission.find())
-    return permis_lis
+@router.get("/get_permission_factory")
+async def get_permis_factory(facto_id : str) :
+    obj_id = ObjectId(facto_id)
+    find_permission = collection_Permission.find({"factory_id" : obj_id})
+
+    user_list = []
+    for each_permission in find_permission:
+        that_user_id = str(each_permission['user_id'])
+        which_user = {'_id' : ObjectId(that_user_id)}
+        find_user = collection_user.find_one(which_user)
+        print(find_user)
+        if find_user:
+            find_user['_id'] = str(find_user['_id'])
+            user_list.append(find_user)
+
+    return user_list
+
+#Get Method for show verified user who dont have permission in that factory
+@router.get("/get_not_permissin_factory")
+async def get_no_permis_facto(facto_id : str):
+    obj_id = ObjectId(facto_id)
+    verified_users = collection_user.find({"is_verified": True})
+
+    user_list = []
+    for each_verified_users in verified_users:
+        each_verified_users['_id'] = str(each_verified_users['_id']) 
+        user_list.append(each_verified_users)
+
+    find_permission = collection_Permission.find({"factory_id" : obj_id})
+    for each_permission in find_permission:
+        that_user_id = str(each_permission['user_id'])
+        that_user_id = str(each_permission['user_id'])
+        for user in user_list:
+            if user['_id'] == that_user_id:
+                user_list.remove(user)
+    
+    return user_list
 
 #Post Request Method
-@router.post("/Post Permission")
+@router.post("/post_permission")
 async def post_permis_lis(permis: Permission):
     permis_doc = dict(permis)
     user_post_name = permis_doc['username']
@@ -490,13 +541,13 @@ async def delete_factory_permis(facto_name : str):
 
 #-------------------------------------------------------Defect-------------------------------------------------------
 # GET Request Method
-@router.get("/Get Defect")
+@router.get("/get_defect")
 async def get_defec_lis() :
     defec_lis = list_serial_defec(collection_Defect.find())
     return defec_lis
 
 #POST Request Method
-@router.post("/Post Defect")
+@router.post("/post_defect")
 async def post_defec_lis(defec: Defect):
     defect_doc = dict(defec)
     collection_Defect.insert_one(_doc)
