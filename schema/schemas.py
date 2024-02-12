@@ -61,7 +61,6 @@ def individual_serial_permis(permis) -> dict:
     return{
         "user_id" : str(permis["user_id"]),
         "factory_id" : str(permis["factory_id"]),
-        "have_permis" : permis["have_permis"]
     }
 
 

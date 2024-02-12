@@ -1,6 +1,6 @@
 #coding: utf-8
 from fastapi import APIRouter, Depends, HTTPException, Request, File, UploadFile
-from models.model import User,Factory,Building,Image,Defect,DefectLocation,Permission
+from models.model import User,Factory,Building,Image,Defect,DefectLocation,Permission, Token, TokenData, CreateUserRequest, ExtractVideo, VerifiedUser, UserChangePassword, ChangeRole, AdminChangePassword, UsernameInput, FactoryId, BuildingId, BuildingPath, ImagePath, ImageId, DefectLocationWithImage
 from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect,collection_Permission
 from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec,list_serial_permis
 from bson import ObjectId
@@ -37,22 +37,6 @@ pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')
 
 #-------------------------------------------------------Auth-------------------------------------------------------
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-class TokenData(BaseModel):
-    username: str | None = None
-
-class CreateUserRequest(BaseModel):
-    username: str
-    password : str
-    verified_file_path: str
-
-class ExtractVideo(BaseModel):
-    input_dir: str
-    output_dir: str
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -167,23 +151,23 @@ async def get_usr_unverified() :
 
 #PUT Request Method for verified user
 @router.put("/put_verified")
-async def put_user_verified(verified : bool,username_veri : str):
-    who_user = collection_user.find_one({'username' : username_veri})
+async def put_user_verified(verified : VerifiedUser):
+    who_user = collection_user.find_one({'username' : verified.username})
 
     if who_user:
-        collection_user.update_one({'username' : username_veri}, {'$set': {'is_verified' : verified}})
+        collection_user.update_one({'username' : verified.username}, {'$set': {'is_verified' : verified.verified}})
     else:
         raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
 
 #PUT Request Method for change password
 @router.put("/put_change_password")
-async def put_user_password(username_change : str, old_password : str ,new_password : str, ):
-    who_user = collection_user.find_one({'username' : username_change})
+async def put_user_password(userchange : UserChangePassword):
+    who_user = collection_user.find_one({'username' : userchange.username})
     
     if who_user:
-        if verify_password(old_password, who_user['password']):
-            hashed_password = pwd_context.hash(new_password)
-            collection_user.update_one({'username' : username_change},{'$set': {'password' : hashed_password}})
+        if verify_password(userchange.old_password, who_user['password']):
+            hashed_password = pwd_context.hash(userchange.new_password)
+            collection_user.update_one({'username' : userchange.username},{'$set': {'password' : hashed_password}})
             return {"message": "Password updated successfully"}
         else:
             raise HTTPException(status_code=400, detail="Old password is incorrect")
@@ -191,29 +175,29 @@ async def put_user_password(username_change : str, old_password : str ,new_passw
         raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
     
 @router.put("/admin_change_role")
-async def admin_change_role(username_change: str, user_isadmin : bool):
-    who_user = collection_user.find_one({'username' : username_change})
+async def admin_change_role(role : ChangeRole):
+    who_user = collection_user.find_one({'username' : role.username})
 
     if who_user:
-        collection_user.update_one({'username' : username_change},{'$set': {'is_admin' : user_isadmin}})
+        collection_user.update_one({'username' : role.username},{'$set': {'is_admin' : role.user_isadmin}})
     else:
         raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
 
 @router.put("/admin_change_password")
-async def put_admin_password(username_change : str, new_password : str):
-    who_user = collection_user.find_one({'username' : username_change})
+async def put_admin_password(adminchange : AdminChangePassword):
+    who_user = collection_user.find_one({'username' : adminchange.username})
 
     if who_user:
-        hashed_password = pwd_context.hash(new_password)
-        collection_user.update_one({'username' : username_change},{'$set': {'password' : hashed_password}})
+        hashed_password = pwd_context.hash(adminchange.new_password)
+        collection_user.update_one({'username' : adminchange.username},{'$set': {'password' : hashed_password}})
     else:
         raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
 
 # Delete User Method
 @router.delete("/user/{username}")
-async def delete_user(username_delete : str) :
-    await delete_user_permis(str(username_delete))
-    collection_user.find_one_and_delete({'username' : username_delete})
+async def delete_user(user_name : UsernameInput) :
+    await delete_user_permis(UsernameInput(username = str(user_name.username)))
+    collection_user.find_one_and_delete({'username' : user_name.username})
 
 
 #-------------------------------------------------------Factory-------------------------------------------------------
@@ -274,23 +258,17 @@ async def post_facto_lis(facto: Factory):
 
 #Delete Factory and delete every thing about it.
 @router.delete("/factory/{factory_name_and_detail}")
-async def delete_facto(factory_delete_name : str, factory_delete_details : str):
-    which_factory = {'$and' : [{'factory_name' : factory_delete_name},{'factory_details' : factory_delete_details}]}
-    find_factory_by_name = collection_factory.find(which_factory)
+async def delete_facto(id_facto : FactoryId):
 
-    for that_factory in find_factory_by_name:
-        which_factory_id = that_factory['_id']
-
-    find_building_by_facto_id = collection_building.find({'factory_id' : ObjectId(which_factory_id)})
+    find_building_by_facto_id = collection_building.find({'factory_id' : str(id_facto.facto_id)})
 
     for that_building in find_building_by_facto_id:
-        which_building_path = that_building['data_location']
-        await delete_building(str(which_building_path))
+        which_building_id = that_building['_id']
+        await delete_building(BuildingId(build_id = str(which_building_id)))
     
-    await delete_factory_permis(str(factory_delete_name))
-    collection_factory.find_one_and_delete({"_id": ObjectId(which_factory_id)})
+    await delete_factory_permis(FactoryId(facto_id = str(id_facto.facto_id)))
+    collection_factory.find_one_and_delete({"_id": ObjectId(id_facto.facto_id)})
     
-
 #-------------------------------------------------------Building--------------------------------------------------------
 
 # GET Request Method for factory information
@@ -313,119 +291,79 @@ async def get_build_lis() :
 @router.post("/post_building")
 async def post_build_lis(build: Building):
     build_doc = dict(build)
-    # factory_id = build_doc['factory_id']
-    # which_factory = {'$and' : [{'factory_name' : factory_post_name},{'factory_details' : factory_post_details}]}
-    # which_factory = {"_id" : ObjectId(factory_id)}
-    # find_factory = collection_factory.find_one(which_factory)
-    # which_factory_id = find_factory['_id']
-
-    # build_doc['factory_id'] = which_factory #factory_id
-    # build_doc.pop('factory_name' , None)
-    # build_doc.pop('factory_details' , None)
     collection_building.insert_one(build_doc)
 
 #Delete Building and all about it
-@router.delete("/building/{building_path}")
-async def delete_building(building_delete_path : str):
-    which_building_path = {'data_location' : building_delete_path}
-    which_building = collection_building.find(which_building_path)
-    print(which_building)
-
-    for that_building in which_building:
-        which_building_id = that_building['_id']
+@router.delete("/building/{building_id}")
+async def delete_building(id_building : BuildingId):
     
-    find_image_by_building_id = collection_Image.find({'building_id' : ObjectId(which_building_id)})
+    find_image_by_building_id = collection_Image.find({'building_id' : ObjectId(id_building.build_id)})
 
     for each_image in find_image_by_building_id :
-        each_image_path = each_image['image_path']
-        await delete_image_lis(str(each_image_path))
+        each_image_id = each_image['_id']
+        await delete_image_lis(ImageId(image_id = str(each_image_id)))
     
-    collection_building.find_one_and_delete({'_id' : ObjectId(which_building_id)})
+    collection_building.find_one_and_delete({'_id' : ObjectId(id_building.build_id)})
 
 #-------------------------------------------------------Image-------------------------------------------------------
 
 # GET Request Method for image when need to show image which have defect
 @router.get("/get_image")
-async def get_image_lis(building_data_location : str) :
-    image_path_list = []
+async def get_image_lis(building_id : str) :
+    image_list = []
 
-    building_data = {"data_location" : building_data_location}
-    which_building = collection_building.find(building_data)
-    for just_one_building in which_building:
-        which_building_id = just_one_building['_id']
+    which_building_id = building_id
 
-        find_image_by_building_id = {'building_id' : ObjectId(which_building_id)}
-        which_image = collection_Image.find(find_image_by_building_id)
-        for each_image in which_image:
-            defect_count = 0 
-            which_image_id = each_image['_id']
-            find_defectlo_by_image_id = {'image_id' : ObjectId(which_image_id)}
-            have_defect = (collection_DefectLocation.find(find_defectlo_by_image_id))
-            defect_count = have_defect.count()
-            if defect_count > 0 :
-                which_image_path = each_image['image_path']
-                image_path_list.append({"image_path": which_image_path})
+    find_image_by_building_id = {'building_id' : str(which_building_id)}
+    which_image = collection_Image.find(find_image_by_building_id)
+    for each_image in which_image:
+        defect_count = 0 
+        which_image_id = each_image['_id']
+        find_defectlo_by_image_id = {'image_id' : ObjectId(which_image_id)}
+        defect_count = collection_DefectLocation.count_documents(find_defectlo_by_image_id)
+        if defect_count > 0 :
+            which_image_path = each_image['image_path']
+            image_list.append({"image_id" : str(which_image_id), "image_path": which_image_path})
 
-    return image_path_list
+    return image_list
 
 #POST Request Method
 @router.post("/post_image")
 async def post_image_lis(img: Image):
     image_doc = dict(img)
-    building_post_path = image_doc['building_path']
-    find_building = collection_building.find({'data_location' : building_post_path})
-
-    for each_building in find_building:
-        which_building_id = each_building['_id']
-
-    image_doc['building_id'] = which_building_id #building_id
-    image_doc.pop('building_path' , None)
     collection_Image.insert_one(image_doc)
 
 # Delete Request Method for image
 @router.delete("/image/{image_path}")
-async def delete_image_lis(image_path_delete : str):
-    find_image_by_image_path = {'image_path' : image_path_delete}
-    which_image = collection_Image.find(find_image_by_image_path)
-
+async def delete_image_lis(id_image : ImageId):
 
     tasks = []
-    for that_image in which_image:
-        which_image_id = that_image['_id']
-        print(which_image_id)
-        tasks.append(delete_defectlo_lis(str(which_image_id)))
+    which_image_id = id_image.image_id
+    tasks.append(delete_defectlo_lis(str(which_image_id)))
     
     await asyncio.gather(*tasks)
 
-    collection_Image.find_one_and_delete({'_id' : which_image_id})
+    collection_Image.find_one_and_delete({'_id' : ObjectId(which_image_id)})
 
 
 #-------------------------------------------------------DefectLocation-------------------------------------------------------
-# GET Request Method by image_path
+# GET Request Method by image_id
 @router.get("/get_defectLocation")
-async def get_defectlo_lis(image_path_for_defect : str) :
-    image_path = {'image_path' : image_path_for_defect}
-    which_image = collection_Image.find(image_path)
+async def get_defectlo_lis(image_id : str) :
 
-    for just_one_image in which_image:
-        which_image_id = just_one_image['_id']
-
-    image_id_in_defect = {'image_id' : which_image_id}
+    image_id_in_defect = {'image_id' : ObjectId(image_id)}
     defectlo_lis = list_serial_defectlo(collection_DefectLocation.find(image_id_in_defect))
     return defectlo_lis
 
 #POST Request Method for redefine the defect square
 @router.post("/post_defectLocation_for_redefine")
-async def post_defectlo_lis_redefine(defectlos: List[DefectLocation], image_post_path : str):
-    image_unique = {"image_path" : image_post_path}
-    find_image = collection_Image.find(image_unique)
-
-    for each_doc in find_image:
-        image_id = each_doc['_id']
+async def post_defectlo_lis_redefine(defect_with_image: DefectLocationWithImage):
+    Image_post_id = defect_with_image.Image_post_id
+    defectlos = defect_with_image.defectlos
 
     for defectlo in defectlos:
         defectlocation_doc = dict(defectlo)
-        defectlocation_doc['image_id'] = image_id
+        defectlocation_doc['image_id'] = Image_post_id
         class_type = defectlocation_doc['class_type']
         class_data = collection_Defect.find({"defect_class" : class_type})
         for each_doc in class_data:
@@ -438,19 +376,18 @@ async def post_defectlo_lis_redefine(defectlos: List[DefectLocation], image_post
 #POST Request Method for use model detection
 #Use image path for parameter
 @router.post("/post_defectLocation_for_model")
-async def post_defectlo_lis_model(image_model_path : str):
+async def post_defectlo_lis_model(build_path : BuildingPath):
 
     #get position's image path and model path
-    print(image_model_path)
-    img_path = os.path.join(image_model_path) #image path for model
+    img_path = os.path.join(build_path.building_path) #image path for model
     model_path = os.path.join('bestv3.pt')
     model = YOLO(model_path)
     cap = cv2.VideoCapture(img_path)
 
-    find_image = collection_Image.find({},{"image_path": image_model_path})
+    find_image = collection_Image.find({},{"image_path": build_path.building_path})
 
     for each_doc in find_image:
-        image_id = each_doc['_id']
+        image_id = str(each_doc['_id'])
 
     while True:
         ret, img = cap.read()
@@ -494,12 +431,12 @@ async def post_defectlo_lis_model(image_model_path : str):
 
 # Delete Request Method for redefind defect by image_id
 @router.delete("/defectlo/{image_id}")
-async def delete_defectlo_lis(image_id: str):
-    defectloc_image = collection_DefectLocation.find({"image_id": ObjectId(image_id)})
+async def delete_defectlo_lis(id_image : ImageId):
+    defectloc_image = collection_DefectLocation.find({"image_id": str(id_image.image_id)})
     
     for each_doc in defectloc_image:
         defectlo_id = each_doc['_id']
-        collection_DefectLocation.find_one_and_delete({"_id": defectlo_id})
+        collection_DefectLocation.find_one_and_delete({"_id": ObjectId(defectlo_id)})
     
     
 #-------------------------------------------------------Permission-------------------------------------------------------
@@ -565,10 +502,10 @@ async def post_permis_lis(permis: Permission):
     collection_Permission.insert_one(permis_doc)
 
 #Delete Permission Method by user
-@router.delete("/permis_user/{permis_username}")
-async def delete_user_permis(permis_username : str):
-    print('delete_user_permis' + ' : ' + permis_username)
-    who_user_username = {'username' : str(permis_username)}
+@router.delete("/permis_user")
+async def delete_user_permis(permis_username : UsernameInput):
+    print('delete_user_permis' + ' : ' + permis_username.username)
+    who_user_username = {'username' : str(permis_username.username)}
     who_user = collection_user.find(who_user_username)
 
     for that_user in who_user :
@@ -578,15 +515,11 @@ async def delete_user_permis(permis_username : str):
             collection_Permission.find_one_and_delete(each_permis)
 
 @router.delete("/permis_facto/{permis_factory}")
-async def delete_factory_permis(facto_name : str):
-    which_facto_name = {'factory_name' : str(facto_name)}
-    which_facto = collection_factory.find(which_facto_name)
+async def delete_factory_permis(id_facto : FactoryId):
 
-    for that_facto in which_facto:
-        which_facto_id = that_facto['_id']
-        which_permis = collection_Permission.find({'factory_id' : ObjectId(which_facto_id)})
-        for each_permis in which_permis:
-            collection_Permission.find_one_and_delete(each_permis)
+    which_permis = collection_Permission.find({'factory_id' : ObjectId(id_facto.facto_id)})
+    for each_permis in which_permis:
+        collection_Permission.find_one_and_delete(each_permis)
 
 
 #-------------------------------------------------------Defect-------------------------------------------------------
