@@ -189,6 +189,25 @@ async def put_user_password(username_change : str, old_password : str ,new_passw
             raise HTTPException(status_code=400, detail="Old password is incorrect")
     else:
         raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
+    
+@router.put("/admin_change_role")
+async def admin_change_role(username_change: str, user_isadmin : bool):
+    who_user = collection_user.find_one({'username' : username_change})
+
+    if who_user:
+        collection_user.update_one({'username' : username_change},{'$set': {'is_admin' : user_isadmin}})
+    else:
+        raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
+
+@router.put("/admin_change_password")
+async def put_admin_password(username_change : str, new_password : str):
+    who_user = collection_user.find_one({'username' : username_change})
+
+    if who_user:
+        hashed_password = pwd_context.hash(new_password)
+        collection_user.update_one({'username' : username_change},{'$set': {'password' : hashed_password}})
+    else:
+        raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
 
 # Delete User Method
 @router.delete("/user/{username}")
