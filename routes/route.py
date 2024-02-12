@@ -1,6 +1,6 @@
 #coding: utf-8
 from fastapi import APIRouter, Depends, HTTPException, Request, File, UploadFile
-from models.modl import User,Factory,Building,Image,Defect,DefectLocation,Permission
+from models.model import User,Factory,Building,Image,Defect,DefectLocation,Permission
 from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect,collection_Permission
 from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec,list_serial_permis
 from bson import ObjectId
@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from starlette import status
 from config.database import db
 import shutil
-
+import uuid
 import ultralytics
 import torch
 import torchvision
@@ -25,6 +25,7 @@ from ultralytics.utils.plotting import Annotator
 import numpy as np
 import time
 import json
+import glob
 
 router = APIRouter()
 
@@ -48,6 +49,10 @@ class CreateUserRequest(BaseModel):
     username: str
     password : str
     verified_file_path: str
+
+class ExtractVideo(BaseModel):
+    input_dir: str
+    output_dir: str
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -101,18 +106,20 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
     return user
 
 @router.post("/upload_user_file")
-async def upload_file(file:UploadFile = File(...)):
-    os.makedirs("user_file_verified", exist_ok=True)
+async def upload_file(file:UploadFile):
+    file_path = str(uuid.uuid4())
+    os.makedirs(f"data/user_file_verified/{file_path}", exist_ok=True)
+    file_dir = f"data/user_file_verified/{file_path}/{file.filename}"
     try :
         contents = await file.read()
-        with open(f"user_file_verified/{file.filename}","wb") as f:
+        with open(file_dir,"wb") as f:
             f.write(contents)
     except Exception:
         return {"message": "There was an error uploading the file"}
     finally:
         await file.close()
 
-    return {"path": f"user_file_verified/{file.filename}"}
+    return {"path": file_dir}
 
 @router.post("/sign_up", status_code=status.HTTP_201_CREATED)
 async def sign_up(create_user_request: CreateUserRequest):
@@ -415,12 +422,13 @@ async def post_defectlo_lis_redefine(defectlos: List[DefectLocation], image_post
 async def post_defectlo_lis_model(image_model_path : str):
 
     #get position's image path and model path
+    print(image_model_path)
     img_path = os.path.join(image_model_path) #image path for model
-    model_path = os.path.join('best.pt')
+    model_path = os.path.join('bestv3.pt')
     model = YOLO(model_path)
     cap = cv2.VideoCapture(img_path)
 
-    find_image = collection_Image.find(image_model_path)
+    find_image = collection_Image.find({},{"image_path": image_model_path})
 
     for each_doc in find_image:
         image_id = each_doc['_id']
@@ -582,3 +590,64 @@ async def post_defec_lis(defec: Defect):
 # @router.delete("/{id}")
 # async def delete_todo(id:str):
 #     collection_name.find_one_and_delete({"_id": ObjectId(id)})
+
+#-------------------------------------------------------Video-------------------------------------------------------
+@router.post("/upload_video_file")
+async def upload_video(fileList: List[UploadFile]):
+    file_path = str(uuid.uuid4())
+    os.makedirs(f"data/video/{file_path}", exist_ok=True)
+    for file in fileList:
+        file_dir = f"data/video/{file_path}/{file.filename}"
+        try :
+            contents = await file.read()
+            with open(file_dir,"wb") as f:
+                f.write(contents)
+        except Exception as e:
+            return {"message": f"There was an error uploading the file {e}"}
+        finally:
+            await file.close()
+
+    return {"path": f"data/video/{file_path}"}
+
+@router.post("/extract_video")
+async def extract_video(path: ExtractVideo):
+    video_paths = glob.glob(f'{path.input_dir}/*.mp4')
+    fps = 1
+    frame_count = 0
+    digits = len(str(len(video_paths) * 323))
+
+    for video_path in video_paths:
+        cap = cv2.VideoCapture(video_path)
+
+        if not cap.isOpened():
+            print(f"Error: Could not open video file '{video_path}'.")
+            continue
+
+        frame_interval = int(cap.get(cv2.CAP_PROP_FPS) / fps)
+
+        while cap.isOpened():
+        # Read a frame from the video
+            ret, frame = cap.read()
+
+        # Check if the frame was read successfully
+            if not ret:
+                break
+
+        # Increment frame count
+            frame_count += 1
+
+        # Process the frame (you can perform any operations here if needed)
+        # For example, you can save the frame to a file
+            frame_filename = f'{path.output_dir}/{str(frame_count).zfill(digits)}.jpg'
+            cv2.imwrite(frame_filename, frame)
+
+        # Skip frames to match the desired frame extraction rate
+            for _ in range(frame_interval - 1):
+                cap.grab()
+
+    # Release the VideoCapture object
+        cap.release()
+
+    shutil.rmtree(path.input_dir)
+
+    return {"message": "extract video complete"}
