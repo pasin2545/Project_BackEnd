@@ -1,6 +1,6 @@
 #coding: utf-8
 from fastapi import APIRouter, Depends, HTTPException, Request, File, UploadFile
-from models.model import User,Factory,Building,Image,Defect,DefectLocation,Permission, Token, TokenData, CreateUserRequest, ExtractVideo, VerifiedUser, UserChangePassword, ChangeRole, AdminChangePassword, UsernameInput, FactoryId, BuildingId, BuildingPath, ImagePath, ImageId, DefectLocationWithImage
+from models.model import User,Factory,Building,Image,Defect,DefectLocation,Permission, Token, TokenData, CreateUserRequest, ExtractVideo, VerifiedUser, UserChangePassword, ChangeRole, AdminChangePassword, UsernameInput, FactoryId, BuildingId, BuildingPath, ImagePath, ImageId, DefectLocationWithImage, BuildingDetail
 from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect,collection_Permission
 from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec,list_serial_permis
 from bson import ObjectId
@@ -287,6 +287,17 @@ async def get_build_lis() :
     build_lis = list_serial_build(collection_building.find())
     return build_lis
 
+@router.put("/change_building_detail")
+async def put_building_detail(detail : BuildingDetail):
+    which_building = collection_building.find_one({'_id' : ObjectId(detail.building_id)})
+
+    if which_building :
+        collection_building.update_one({'_id' : ObjectId(detail.building_id)},{'$set': {'building_detail' : detail.building_detail}})
+        collection_building.update_one({'_id' : ObjectId(detail.building_id)},{'$set': {'building_length' : detail.building_length}})
+        collection_building.update_one({'_id' : ObjectId(detail.building_id)},{'$set': {'building_width' : detail.building_width}})
+    else:
+        raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
+
 #POST Request Method
 @router.post("/post_building")
 async def post_build_lis(build: Building):
@@ -524,16 +535,16 @@ async def delete_factory_permis(id_facto : FactoryId):
 
 #-------------------------------------------------------Defect-------------------------------------------------------
 # GET Request Method
-@router.get("/get_defect")
-async def get_defec_lis() :
-    defec_lis = list_serial_defec(collection_Defect.find())
-    return defec_lis
+# @router.get("/get_defect")
+# async def get_defec_lis() :
+#     defec_lis = list_serial_defec(collection_Defect.find())
+#     return defec_lis
 
-#POST Request Method
-@router.post("/post_defect")
-async def post_defec_lis(defec: Defect):
-    defect_doc = dict(defec)
-    collection_Defect.insert_one(_doc)
+# #POST Request Method
+# @router.post("/post_defect")
+# async def post_defec_lis(defec: Defect):
+#     defect_doc = dict(defec)
+#     collection_Defect.insert_one(_doc)
 
 # @router.put("/{id}")
 # async def put_todo(id: str, todo: Todo):

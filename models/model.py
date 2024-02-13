@@ -98,3 +98,9 @@ class ImageId(BaseModel):
 class DefectLocationWithImage(BaseModel):
     defectlos : List[DefectLocation]
     Image_post_id : str
+
+class BuildingDetail(BaseModel):
+    building_id : str
+    building_detail : str
+    building_length : float
+    building_width : float
