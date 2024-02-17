@@ -2,8 +2,11 @@ from pydantic import BaseModel,Field
 from typing import List
 
 class User(BaseModel):
+    firstname : str
+    surname : str
+    email :str
     username : str = Field(max_length=20)
-    password : str 
+    password : str
     is_admin : bool = False
     is_verified : bool = False
     user_verification_file_path : str
@@ -14,9 +17,10 @@ class Factory(BaseModel):
 
 class Building(BaseModel):
     building_name : str
-    building_detail : str
     building_length : float
     building_width : float
+    building_latitude : str
+    building_longitude :str
     data_location : str
     defect_sum : int
     each_defect_type_sum : str
@@ -52,9 +56,20 @@ class TokenData(BaseModel):
     username: str | None = None
 
 class CreateUserRequest(BaseModel):
+    firstname : str
+    surname : str
+    email : str
     username: str
     password : str
     verified_file_path: str
+
+class CreateAdminRequest(BaseModel):
+    firstname : str
+    surname : str
+    email : str
+    username : str
+    password : str
+    verified_file_path :str
 
 class ExtractVideo(BaseModel):
     input_dir: str

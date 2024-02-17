@@ -3,6 +3,9 @@ from routes import route
 def individual_serial_user(usr) -> dict:
     return {
         "user_id" : str(usr["_id"]),
+        "firstname" : usr["firstname"],
+        "surname" : usr["surname"],
+        "email" : usr["email"],
         "username" : usr["username"],
         "password" : usr["password"],
         "is_admin" : usr["is_admin"],
@@ -21,9 +24,10 @@ def individual_serial_build(build) -> dict:
     return {
         "building_id" : str(build["_id"]),
         "building_name" : build["building_name"],
-        "building_detail" : build["building_detail"],
         "building_length" : build["building_length"],
         "building_width" : build["building_width"],
+        "building_latitude" : build["building_latitude"],
+        "building_longitude" : build["building_longitude"],
         "data_location" : build["data_location"],
         "defect_sum" : build["defect_sum"],
         "each_defect_type_sum" : build["each_defect_type_sum"],

@@ -1,6 +1,6 @@
 #coding: utf-8
 from fastapi import APIRouter, Depends, HTTPException, Request, File, UploadFile
-from models.model import User,Factory,Building,Image,Defect,DefectLocation,Permission, Token, TokenData, CreateUserRequest, ExtractVideo, VerifiedUser, UserChangePassword, ChangeRole, AdminChangePassword, UsernameInput, FactoryId, BuildingId, BuildingPath, ImagePath, ImageId, DefectLocationWithImage, BuildingDetail
+from models.model import User,Factory,Building,Image,Defect,DefectLocation,Permission, Token, TokenData, CreateUserRequest, ExtractVideo, VerifiedUser, UserChangePassword, ChangeRole, AdminChangePassword, UsernameInput, FactoryId, BuildingId, BuildingPath, ImagePath, ImageId, DefectLocationWithImage, BuildingDetail,CreateAdminRequest
 from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect,collection_Permission
 from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec,list_serial_permis
 from bson import ObjectId
@@ -109,11 +109,30 @@ async def upload_file(file:UploadFile):
 async def sign_up(create_user_request: CreateUserRequest):
 
     create_user_model = User(
+        firstname=create_user_request.firstname,
+        surname=create_user_request.surname,
+        email=create_user_request.email,
         username=create_user_request.username,
         password=create_user_request.password,
         user_verification_file_path=create_user_request.verified_file_path
     )
     create_user(create_user_model)
+    return {"message": "User created successfully"}
+
+@router.post("/create_admin", status_code=status.HTTP_201_CREATED)
+async def create_admin(create_admin_request: CreateAdminRequest):
+
+    create_admin_model = User(
+        firstname=create_admin_request.firstname,
+        surname=create_admin_request.surname,
+        email=create_admin_request.email,
+        username=create_admin_request.username,
+        password=create_admin_request.password,
+        is_admin=True,
+        is_verified=True,
+        user_verification_file_path=create_admin_request.verified_file_path
+    )
+    create_user(create_admin_model)
     return {"message": "User created successfully"}
     
 @router.post("/token")
@@ -149,6 +168,11 @@ async def get_usr_unverified() :
     usr_lis = list_serial_user(collection_user.find({'is_verified' : False}))
     return usr_lis
 
+@router.get("/get_admin")
+async def get_admin():
+    usr_list = list_serial_user(collection_user.find({"is_admin" : True, "is_verified" : True}))
+    return usr_list 
+
 #PUT Request Method for verified user
 @router.put("/put_verified")
 async def put_user_verified(verified : VerifiedUser):
@@ -171,15 +195,6 @@ async def put_user_password(userchange : UserChangePassword):
             return {"message": "Password updated successfully"}
         else:
             raise HTTPException(status_code=400, detail="Old password is incorrect")
-    else:
-        raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
-    
-@router.put("/admin_change_role")
-async def admin_change_role(role : ChangeRole):
-    who_user = collection_user.find_one({'username' : role.username})
-
-    if who_user:
-        collection_user.update_one({'username' : role.username},{'$set': {'is_admin' : role.user_isadmin}})
     else:
         raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
 
@@ -209,7 +224,6 @@ async def get_facto_info(facto_id : str):
     if facto_info:
         facto_info['_id'] = str(facto_info['_id'])
         return facto_info
-
 
 # GET Request Method for admin look factory
 @router.get("/get_admin_factory")
@@ -250,6 +264,34 @@ async def get_usr_facto_lis(username : str) :
         })
 
     return factories_list
+
+#Get Method for permission summary
+@router.get("/permission_summary")
+async def get_permission_summary():
+    factory_list = []
+    all_factory = collection_factory.find()
+
+    for each_factory in all_factory:
+        each_factory_name = str(each_factory["factory_name"])
+        each_factory_id = each_factory["_id"]
+
+        user_list = []
+        user_count = 0
+
+        find_permission = collection_Permission.find({"factory_id" : each_factory_id})
+        for each_permission in find_permission:
+            user_count += 1
+            user_permis_id = each_permission["user_id"]
+            find_user = collection_user.find_one({"_id" : ObjectId(user_permis_id)})
+            user_name = find_user['username']
+            user_list.append({"username" : user_name})
+
+        factory_list.append({"factory_name" : each_factory_name, 
+        "user_count" : user_count, 
+        "user_permis" : user_list
+        })
+    
+    return factory_list        
 
 #POST Request Method
 @router.post("/post_factory")
@@ -473,7 +515,7 @@ async def get_permis_factory(facto_id : str) :
 @router.get("/get_not_permissin_factory")
 async def get_no_permis_facto(facto_id : str):
     obj_id = ObjectId(facto_id)
-    verified_users = collection_user.find({"is_verified": True})
+    verified_users = collection_user.find({"is_verified": True, "is_admin" : False})
 
     user_list = []
     for each_verified_users in verified_users:
