@@ -14,6 +14,7 @@ class User(BaseModel):
 class Factory(BaseModel):
     factory_name : str
     factory_details : str
+    is_disable : bool = False
 
 class Building(BaseModel):
     building_name : str
@@ -119,3 +120,18 @@ class BuildingDetail(BaseModel):
     building_detail : str
     building_length : float
     building_width : float
+
+class History(BaseModel):
+    create_date : str
+    create_time : str
+    is_process : bool = False
+    building_id : str
+
+class Image(BaseModel):
+    image_path :str
+    stitched_location_x : float
+    stitched_location_y : float
+    history_id : str
+
+class HistoryId(BaseModel):
+    histo_id : str

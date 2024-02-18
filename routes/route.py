@@ -1,8 +1,10 @@
 #coding: utf-8
 from fastapi import APIRouter, Depends, HTTPException, Request, File, UploadFile
-from models.model import User,Factory,Building,Image,Defect,DefectLocation,Permission, Token, TokenData, CreateUserRequest, ExtractVideo, VerifiedUser, UserChangePassword, ChangeRole, AdminChangePassword, UsernameInput, FactoryId, BuildingId, BuildingPath, ImagePath, ImageId, DefectLocationWithImage, BuildingDetail,CreateAdminRequest
-from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect,collection_Permission
-from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec,list_serial_permis
+from models.model import User,Factory,Building,Image,Defect,DefectLocation,Permission, Token, TokenData, CreateUserRequest, ExtractVideo, VerifiedUser, UserChangePassword, ChangeRole, AdminChangePassword, UsernameInput, FactoryId, BuildingId, BuildingPath, ImagePath, ImageId, DefectLocationWithImage, BuildingDetail,CreateAdminRequest, History, HistoryId
+from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect,collection_Permission, collection_history
+from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec,list_serial_permis, list_serial_histo
+from datetime import datetime
+import pytz
 from bson import ObjectId
 from typing import List, Annotated, Optional
 import asyncio
@@ -225,13 +227,19 @@ async def get_facto_info(facto_id : str):
         facto_info['_id'] = str(facto_info['_id'])
         return facto_info
 
-# GET Request Method for admin look factory
+# GET Request Method for admin look factory in add factory page
 @router.get("/get_admin_factory")
-async def get_facto_lis() :
+async def get_admin_add_permis() :
+    facto_lis = list_serial_factory(collection_factory.find({'is_disable' : False}))
+    return facto_lis
+
+# GET Request Method for admin factory manage page
+@router.get("/get_admin_manage_factory")
+async def get_admin_manage():
     facto_lis = list_serial_factory(collection_factory.find())
     return facto_lis
 
-#GET Request Method for user
+#GET Request Method for show factory to user
 @router.get("/get_user_factory")
 async def get_usr_facto_lis(username : str) :
     factories_list = []
@@ -247,25 +255,27 @@ async def get_usr_facto_lis(username : str) :
         each_permis_factory_id = str(each_permis['factory_id'])
         find_factory = collection_factory.find_one({'_id': ObjectId(each_permis_factory_id)})
         factory_name = find_factory['factory_name']
+        factory_status = find_factory['is_disable']
         buildings_lis = []
 
-        find_building = collection_building.find({'factory_id' : ObjectId(each_permis_factory_id)})
-        for each_building in find_building:
-            building_name = each_building['building_name']
-            building_id = str(each_building['_id'])
-            buildings_lis.append({
-                'building_name': building_name,
-                'building_id': building_id
+        if factory_status == False:
+            find_building = collection_building.find({'factory_id' : each_permis_factory_id})
+            for each_building in find_building:
+                building_name = each_building['building_name']
+                building_id = str(each_building['_id'])
+                buildings_lis.append({
+                    'building_name': building_name,
+                    'building_id': building_id
+                })
+            factories_list.append({
+                "factory_name": factory_name,
+                "factory_id" : each_permis_factory_id,
+                "buildings": buildings_lis
             })
-        factories_list.append({
-            "factory_name": factory_name,
-            "factory_id" : each_permis_factory_id,
-            "buildings": buildings_lis
-        })
 
     return factories_list
 
-#Get Method for permission summary
+#Get Method for admin permission summary
 @router.get("/permission_summary")
 async def get_permission_summary():
     factory_list = []
@@ -291,7 +301,20 @@ async def get_permission_summary():
         "user_permis" : user_list
         })
     
-    return factory_list        
+    return factory_list     
+
+#PUT Method for admin change between factory (disable=Ture) and (enable=False)
+@router.put("/put_change_facto_status")
+async def put_change_facto_status(id_facto : FactoryId):
+
+    find_factory = collection_factory.find_one({'_id' : ObjectId(id_facto.facto_id)})
+
+    if find_factory :
+        
+        if find_factory['is_disable'] == True:
+            collection_factory.update_one({'_id' : ObjectId(id_facto.facto_id)},{'$set': {'is_disable' : False}})
+        elif find_factory['is_disable'] == False:
+            collection_factory.update_one({'_id' : ObjectId(id_facto.facto_id)},{'$set': {'is_disable' : True}})
 
 #POST Request Method
 @router.post("/post_factory")
@@ -350,33 +373,69 @@ async def post_build_lis(build: Building):
 @router.delete("/building/{building_id}")
 async def delete_building(id_building : BuildingId):
     
-    find_image_by_building_id = collection_Image.find({'building_id' : ObjectId(id_building.build_id)})
+    find_history_by_building_id = collection_history.find({'building_id' : id_building.build_id})
 
-    for each_image in find_image_by_building_id :
+    for each_history in find_history_by_building_id :
+        each_history_id = each_history['_id']
+        await delete_history(HistoryId(histo_id = str(each_history_id)))
+    
+    collection_building.find_one_and_delete({'_id' : ObjectId(id_building.build_id)})
+
+#-------------------------------------------------------History-----------------------------------------------------
+
+@router.get("/get_history")
+async def get_history(id_building : str):
+    histo_list = []
+
+    find_history = collection_history.find({"building_id" : str(id_building)})
+
+    for each_history in find_history:
+        each_history['_id'] = str(each_history['_id'])
+        histo_list.append(each_history)
+    
+    return histo_list
+
+@router.post("/post_history")
+async def post_history(id_building : BuildingId) :
+    current_datetime_utc = datetime.utcnow()
+    timezone_bangkok = pytz.timezone('Asia/Bangkok')
+    current_datetime_bangkok = current_datetime_utc.replace(tzinfo=pytz.utc).astimezone(timezone_bangkok)
+    history = History(
+        create_date=current_datetime_bangkok.strftime("%d-%m-%Y"),
+        create_time=current_datetime_bangkok.strftime("%H:%M:%S"),
+        building_id=str(id_building.build_id)
+    )
+    history_doc = dict(history)
+    collection_history.insert_one(history_doc)
+
+@router.delete("/delete_history")
+async def delete_history(id_histo : HistoryId):
+
+    find_image_by_history_id = collection_Image.find({'history_id' : id_histo.histo_id})
+
+    for each_image in find_image_by_history_id :
         each_image_id = each_image['_id']
         await delete_image_lis(ImageId(image_id = str(each_image_id)))
     
-    collection_building.find_one_and_delete({'_id' : ObjectId(id_building.build_id)})
+    collection_history.find_one_and_delete({'_id' : ObjectId(id_histo.histo_id)})
 
 #-------------------------------------------------------Image-------------------------------------------------------
 
 # GET Request Method for image when need to show image which have defect
 @router.get("/get_image")
-async def get_image_lis(building_id : str) :
+async def get_image_lis(history_id : str) :
     image_list = []
 
-    which_building_id = building_id
+    which_history_id = history_id
 
-    find_image_by_building_id = {'building_id' : str(which_building_id)}
-    which_image = collection_Image.find(find_image_by_building_id)
+    find_image_by_history_id = {'history_id' : str(which_history_id)}
+    which_image = collection_Image.find(find_image_by_history_id)
     for each_image in which_image:
-        defect_count = 0 
         which_image_id = each_image['_id']
         find_defectlo_by_image_id = {'image_id' : ObjectId(which_image_id)}
         defect_count = collection_DefectLocation.count_documents(find_defectlo_by_image_id)
-        if defect_count > 0 :
-            which_image_path = each_image['image_path']
-            image_list.append({"image_id" : str(which_image_id), "image_path": which_image_path})
+        which_image_path = each_image['image_path']
+        image_list.append({"image_id" : str(which_image_id), "image_path": which_image_path})
 
     return image_list
 
@@ -392,11 +451,11 @@ async def delete_image_lis(id_image : ImageId):
 
     tasks = []
     which_image_id = id_image.image_id
-    tasks.append(delete_defectlo_lis(str(which_image_id)))
+    tasks.append(delete_defectlo_lis(ImageId(image_id = str(which_image_id))))
     
     await asyncio.gather(*tasks)
 
-    collection_Image.find_one_and_delete({'_id' : ObjectId(which_image_id)})
+    collection_Image.find_one_and_delete({'_id' : ObjectId(str(which_image_id))})
 
 
 #-------------------------------------------------------DefectLocation-------------------------------------------------------
@@ -411,12 +470,12 @@ async def get_defectlo_lis(image_id : str) :
 #POST Request Method for redefine the defect square
 @router.post("/post_defectLocation_for_redefine")
 async def post_defectlo_lis_redefine(defect_with_image: DefectLocationWithImage):
-    Image_post_id = defect_with_image.Image_post_id
+    Image_post_id = ObjectId(defect_with_image.Image_post_id)
     defectlos = defect_with_image.defectlos
 
     for defectlo in defectlos:
         defectlocation_doc = dict(defectlo)
-        defectlocation_doc['image_id'] = Image_post_id
+        defectlocation_doc['image_id'] = ObjectId(Image_post_id)
         class_type = defectlocation_doc['class_type']
         class_data = collection_Defect.find({"defect_class" : class_type})
         for each_doc in class_data:
@@ -440,7 +499,7 @@ async def post_defectlo_lis_model(build_path : BuildingPath):
     find_image = collection_Image.find({},{"image_path": build_path.building_path})
 
     for each_doc in find_image:
-        image_id = str(each_doc['_id'])
+        image_id = ObjectId(each_doc['_id'])
 
     while True:
         ret, img = cap.read()
@@ -485,7 +544,7 @@ async def post_defectlo_lis_model(build_path : BuildingPath):
 # Delete Request Method for redefind defect by image_id
 @router.delete("/defectlo/{image_id}")
 async def delete_defectlo_lis(id_image : ImageId):
-    defectloc_image = collection_DefectLocation.find({"image_id": str(id_image.image_id)})
+    defectloc_image = collection_DefectLocation.find({"image_id": ObjectId(id_image.image_id)})
     
     for each_doc in defectloc_image:
         defectlo_id = each_doc['_id']

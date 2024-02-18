@@ -17,7 +17,8 @@ def individual_serial_factory(facto) -> dict:
     return {
         "factory_id" : str(facto["_id"]),
         "factory_name" : facto["factory_name"],
-        "factory_details" : facto["factory_details"]
+        "factory_details" : facto["factory_details"],
+        "is_disable" : facto["is_disable"]
     }
 
 def individual_serial_build(build) -> dict:
@@ -32,6 +33,15 @@ def individual_serial_build(build) -> dict:
         "defect_sum" : build["defect_sum"],
         "each_defect_type_sum" : build["each_defect_type_sum"],
         "factory_id" : str(build["factory_id"])
+    }
+
+def individual_serial_history(histo) -> dict:
+    return {
+        "history_id" : str(histo["_id"]),
+        "create_date" : histo["create_date"],
+        "create_time" : histo["create_time"],
+        "is_process" : histo["is_process"],
+        "building_id" : str(histo["building_id"])
     }
 
 def individual_serial_image(img) -> dict:
@@ -76,6 +86,9 @@ def list_serial_factory(facto_lis) -> list :
 
 def list_serial_build(build_lis) -> list :
     return [individual_serial_build(build) for build in build_lis]
+
+def list_serial_histo(histo_lis) -> list :
+    return [individual_serial_history(histo) for histo in histo_lis]
 
 def list_serial_image(img_lis) -> list :
     return [individual_serial_image(img) for img in img_lis]
