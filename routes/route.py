@@ -459,23 +459,114 @@ async def delete_image_lis(id_image : ImageId):
 
 
 #-------------------------------------------------------DefectLocation-------------------------------------------------------
-# GET Request Method by image_id
+
+# GET Request Method for show defect in picture
 @router.get("/get_defectLocation")
 async def get_defectlo_lis(image_id : str) :
+    defectlo_lis_ture = []
+    defectlo_lis_false = []
 
     image_id_in_defect = {'image_id' : ObjectId(image_id)}
-    defectlo_lis = list_serial_defectlo(collection_DefectLocation.find(image_id_in_defect))
-    return defectlo_lis
+    find_defectlo = collection_DefectLocation.find(image_id_in_defect)
+    for each_defectlo in find_defectlo :
+        if each_defectlo['is_user_verified'] == True:
+            each_defectlo['_id'] = str(each_defectlo['_id'])
+            defectlo_lis_ture.append(each_defectlo)
+        elif each_defectlo['is_user_verified'] == False:
+            each_defectlo['_id'] = str(each_defectlo['_id'])
+            defectlo_lis_false.append(each_defectlo)
+    
+    if len(defectlo_lis_ture) > 0 :
+        return defectlo_lis_ture
+    else :
+        return defectlo_lis_false
+
+#GET summary of defect and picture for history summary page
+@router.get("/get_summary_user_verified")
+async def get_summary_user_verified(histo_id : str):
+    summary_list = []
+    summary_system = []
+    summary_user = []
+    defectlo_lis_ture = []
+    defectlo_lis_false = []
+    count_image = 0
+    defect_true_count = 0
+    defect_false_count = 0
+    any_defect_system = [0,0,0,0,0,0,0,0,0]
+    any_defect_user = [0,0,0,0,0,0,0,0,0]
+
+    find_all_image = collection_Image.find({'history_id' : str(histo_id)})
+    
+    for each_image in find_all_image:
+        count_image += 1
+        find_defectlo = collection_DefectLocation.find({'image_id' : str(each_image['_id'])})
+        
+        for each_defectlo in find_defectlo:
+            if each_defectlo['is_user_verified'] == True:
+                each_defectlo['_id'] = str(each_defectlo['_id'])
+                defectlo_lis_ture.append(each_defectlo)
+            elif each_defectlo['is_user_verified'] == False:
+                each_defectlo['_id'] = str(each_defectlo['_id'])
+                defectlo_lis_false.append(each_defectlo)
+                defect_false_count += 1
+                any_defect_system[each_defectlo['class_type']] += 1
+
+        if len(defectlo_lis_ture) > 0 :
+            defect_true_count += len(defectlo_lis_ture)
+
+            for each_defect in defectlo_lis_ture:
+                any_defect_user[each_defectlo['class_type']] += 1
+        else: 
+            defect_true_count += len(defectlo_lis_false)
+
+            for each_defect in defectlo_lis_false:
+                any_defect_user[each_defectlo['class_type']] += 1
+        
+        defectlo_lis_ture = []
+        defectlo_lis_false = []
+    
+    summary_system.append({
+        "summary_defect" : defect_false_count,
+        "birddrop" : any_defect_system[0],
+        "glue" : any_defect_system[1],
+        "mud" : any_defect_system[2],
+        "other" : any_defect_system[3],
+        "rock" : any_defect_system[4],
+        "rust" : any_defect_system[5],
+        "stain" : any_defect_system[6],
+        "stick" : any_defect_system[7],
+        "tape" : any_defect_system[8],
+    })
+    summary_user.append({
+        "summary_defect" : defect_true_count,
+        "birddrop" : any_defect_user[0],
+        "glue" : any_defect_user[1],
+        "mud" : any_defect_user[2],
+        "other" : any_defect_user[3],
+        "rock" : any_defect_user[4],
+        "rust" : any_defect_user[5],
+        "stain" : any_defect_user[6],
+        "stick" : any_defect_user[7],
+        "tape" : any_defect_user[8],
+    })
+    summary_list.append({
+        "photo_count" : count_image,
+        "summary_systems" : summary_system,
+        "summary_user" : summary_user
+    })
+
+    return summary_list
 
 #POST Request Method for redefine the defect square
 @router.post("/post_defectLocation_for_redefine")
 async def post_defectlo_lis_redefine(defect_with_image: DefectLocationWithImage):
-    Image_post_id = ObjectId(defect_with_image.Image_post_id)
+    Image_post_id = str(defect_with_image.Image_post_id)
     defectlos = defect_with_image.defectlos
 
     for defectlo in defectlos:
         defectlocation_doc = dict(defectlo)
-        defectlocation_doc['image_id'] = ObjectId(Image_post_id)
+        defectlocation_doc['image_id'] = Image_post_id
+        defectlocation_doc['is_user_verified'] = True
         class_type = defectlocation_doc['class_type']
         class_data = collection_Defect.find({"defect_class" : class_type})
         for each_doc in class_data:
@@ -499,7 +590,7 @@ async def post_defectlo_lis_model(build_path : BuildingPath):
     find_image = collection_Image.find({},{"image_path": build_path.building_path})
 
     for each_doc in find_image:
-        image_id = ObjectId(each_doc['_id'])
+        image_id = str(each_doc['_id'])
 
     while True:
         ret, img = cap.read()
@@ -523,7 +614,7 @@ async def post_defectlo_lis_model(build_path : BuildingPath):
                 g = box.cls[0]
                 clazz = int(g)
             
-                defect_location = DefectLocation(class_type=clazz, x=Xn, y=Yn, w=Weighthn, h=Heighthn)
+                defect_location = DefectLocation(class_type=clazz, x=Xn, y=Yn, w=Weighthn, h=Heighthn, is_user_verified=False)
 
                 # Convert DefectLocation instance to dictionary
                 defectlocation_doc = defect_location.dict()
@@ -540,6 +631,15 @@ async def post_defectlo_lis_model(build_path : BuildingPath):
 
     cap.release()
     cv2.destroyAllWindows()
+
+# Delete Request Method for renew defect
+@router.delete("/delete_for_renew")
+async def delete_for_renew(id_image : ImageId):
+    find_defect = collection_DefectLocation.find({'image_id' : id_image.image_id})
+
+    for each_defect in find_defect:
+        if each_defect['is_user_verified'] == True:
+            collection_DefectLocation.find_one_and_delete({"_id" : ObjectId(each_defect['_id'])})
 
 # Delete Request Method for redefind defect by image_id
 @router.delete("/defectlo/{image_id}")

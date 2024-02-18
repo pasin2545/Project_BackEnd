@@ -31,7 +31,7 @@ class Image(BaseModel):
     image_path :str
     stitched_location_x : float
     stitched_location_y : float
-    building_id : str
+    history_id : str
 
 class DefectLocation(BaseModel):
     class_type : int
@@ -39,6 +39,7 @@ class DefectLocation(BaseModel):
     y : float
     w : float
     h : float
+    is_user_verified : bool 
 
 class Defect(BaseModel):
     defect_class : int

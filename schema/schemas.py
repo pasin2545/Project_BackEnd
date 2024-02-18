@@ -50,7 +50,7 @@ def individual_serial_image(img) -> dict:
         "image_path" : img["image_path"],
         "stitched_location_x" : img["stitched_location_x"],
         "stitched_location_y" : img["stitched_location_y"],
-        "building_id" : str(img["building_id"])
+        "history_id" : str(img["history_id"])
     }
 
 def individual_serial_defectlo(defectlo) -> dict:
@@ -62,7 +62,8 @@ def individual_serial_defectlo(defectlo) -> dict:
         "w" : defectlo["w"],
         "h" : defectlo["h"],
         "image_id" : str(defectlo["image_id"]),
-        "class_name" : str(defectlo["class_name"])
+        "class_name" : str(defectlo["class_name"]),
+        "is_user_verified" : defectlo["is_user_verified"]
     }
 
 def individual_serial_defec(defec) -> dict:
