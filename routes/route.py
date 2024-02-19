@@ -357,9 +357,10 @@ async def put_building_detail(detail : BuildingDetail):
     which_building = collection_building.find_one({'_id' : ObjectId(detail.building_id)})
 
     if which_building :
-        collection_building.update_one({'_id' : ObjectId(detail.building_id)},{'$set': {'building_detail' : detail.building_detail}})
         collection_building.update_one({'_id' : ObjectId(detail.building_id)},{'$set': {'building_length' : detail.building_length}})
         collection_building.update_one({'_id' : ObjectId(detail.building_id)},{'$set': {'building_width' : detail.building_width}})
+        collection_building.update_one({'_id' : ObjectId(detail.building_id)},{'$set': {'building_latitude' : detail.building_latitude}})
+        collection_building.update_one({'_id' : ObjectId(detail.building_id)},{'$set': {'building_longitude' : detail.building_longitude}})
     else:
         raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
 
@@ -368,6 +369,7 @@ async def put_building_detail(detail : BuildingDetail):
 async def post_build_lis(build: Building):
     build_doc = dict(build)
     collection_building.insert_one(build_doc)
+    build_lis = list_serial_build(collection_building.find())
 
 #Delete Building and all about it
 @router.delete("/building/{building_id}")

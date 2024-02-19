@@ -118,9 +118,10 @@ class DefectLocationWithImage(BaseModel):
 
 class BuildingDetail(BaseModel):
     building_id : str
-    building_detail : str
     building_length : float
     building_width : float
+    building_latitude : str
+    building_longitude :str
 
 class History(BaseModel):
     create_date : str
