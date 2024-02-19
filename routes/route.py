@@ -1,6 +1,6 @@
 #coding: utf-8
 from fastapi import APIRouter, Depends, HTTPException, Request, File, UploadFile
-from models.model import User,Factory,Building,Image,Defect,DefectLocation,Permission, Token, TokenData, CreateUserRequest, ExtractVideo, VerifiedUser, UserChangePassword, ChangeRole, AdminChangePassword, UsernameInput, FactoryId, BuildingId, BuildingPath, ImagePath, ImageId, DefectLocationWithImage, BuildingDetail,CreateAdminRequest, History, HistoryId
+from models.model import User,Factory,Building,Image,Defect,DefectLocation,Permission, Token, TokenData, CreateUserRequest, ExtractVideo, VerifiedUser, UserChangePassword, ChangeRole, AdminChangePassword, UsernameInput, FactoryId, BuildingId, HistoryPath, ImagePath, ImageId, DefectLocationWithImage, BuildingDetail,CreateAdminRequest, History, HistoryId, CreateBuildingRequest
 from config.database import collection_user,collection_building,collection_factory,collection_Image,collection_DefectLocation,collection_Defect,collection_Permission, collection_history
 from schema.schemas import list_serial_user,list_serial_build,list_serial_factory,list_serial_image,list_serial_defectlo,list_serial_defec,list_serial_permis, list_serial_histo
 from datetime import datetime
@@ -28,6 +28,9 @@ import numpy as np
 import time
 import json
 import glob
+import re
+import math
+from GPSPhoto import gpsphoto
 
 router = APIRouter()
 
@@ -332,7 +335,9 @@ async def delete_facto(id_facto : FactoryId):
         await delete_building(BuildingId(build_id = str(which_building_id)))
     
     await delete_factory_permis(FactoryId(facto_id = str(id_facto.facto_id)))
-    collection_factory.find_one_and_delete({"_id": ObjectId(id_facto.facto_id)})
+    rm_factory = collection_factory.find_one_and_delete({"_id": ObjectId(id_facto.facto_id)})
+    fac_id = rm_factory['_id']
+    shutil.rmtree(f'data/image/{fac_id}')
     
 #-------------------------------------------------------Building--------------------------------------------------------
 
@@ -366,10 +371,29 @@ async def put_building_detail(detail : BuildingDetail):
 
 #POST Request Method
 @router.post("/post_building")
-async def post_build_lis(build: Building):
-    build_doc = dict(build)
-    collection_building.insert_one(build_doc)
-    build_lis = list_serial_build(collection_building.find())
+async def post_build_lis(build: CreateBuildingRequest):
+    check_exist = collection_building.find_one({'factory_id' : build.factory_id, 'building_name' : build.building_name})
+
+    if check_exist is None:
+        building = Building(
+            building_name=build.building_name,
+            building_length=build.building_length,
+            building_width=build.building_width,
+            building_latitude=build.building_latitude,
+            building_longitude=build.building_longitude,
+            data_location='',
+            factory_id=build.factory_id
+        )
+        build_doc = dict(building)
+        collection_building.insert_one(build_doc)
+        building = collection_building.find_one(build_doc)
+        building_id = str(building['_id'])
+        building_path = f'data/image/{build.factory_id}/{building_id}'
+        print(building_path)
+        collection_building.update_one(build_doc,{'$set': {'data_location' : building_path}})
+        os.makedirs(building_path, exist_ok=True)
+    else:
+        raise HTTPException(status_code=404, detail=f"Building '{build.building_name}' already created.")
 
 #Delete Building and all about it
 @router.delete("/building/{building_id}")
@@ -381,7 +405,8 @@ async def delete_building(id_building : BuildingId):
         each_history_id = each_history['_id']
         await delete_history(HistoryId(histo_id = str(each_history_id)))
     
-    collection_building.find_one_and_delete({'_id' : ObjectId(id_building.build_id)})
+    rm_building = collection_building.find_one_and_delete({'_id' : ObjectId(id_building.build_id)})
+    shutil.rmtree(rm_building['data_location'])
 
 #-------------------------------------------------------History-----------------------------------------------------
 
@@ -402,11 +427,15 @@ async def post_history(id_building : BuildingId) :
     current_datetime_utc = datetime.utcnow()
     timezone_bangkok = pytz.timezone('Asia/Bangkok')
     current_datetime_bangkok = current_datetime_utc.replace(tzinfo=pytz.utc).astimezone(timezone_bangkok)
+    building = collection_building.find_one({'_id': ObjectId(id_building.build_id)})
+    building_dir = building['data_location']
     history = History(
         create_date=current_datetime_bangkok.strftime("%d-%m-%Y"),
         create_time=current_datetime_bangkok.strftime("%H:%M:%S"),
-        building_id=str(id_building.build_id)
+        building_id=str(id_building.build_id),
+        history_path=f'{building_dir}/{current_datetime_bangkok.strftime("%d-%m-%Y_%H-%M-%S")}'
     )
+    os.makedirs(f'{building_dir}/{current_datetime_bangkok.strftime("%d-%m-%Y_%H-%M-%S")}', exist_ok=True)
     history_doc = dict(history)
     collection_history.insert_one(history_doc)
 
@@ -419,7 +448,8 @@ async def delete_history(id_histo : HistoryId):
         each_image_id = each_image['_id']
         await delete_image_lis(ImageId(image_id = str(each_image_id)))
     
-    collection_history.find_one_and_delete({'_id' : ObjectId(id_histo.histo_id)})
+    rm_history = collection_history.find_one_and_delete({'_id' : ObjectId(id_histo.histo_id)})
+    shutil.rmtree(rm_history['history_path'])
 
 #-------------------------------------------------------Image-------------------------------------------------------
 
@@ -580,59 +610,8 @@ async def post_defectlo_lis_redefine(defect_with_image: DefectLocationWithImage)
 
 #POST Request Method for use model detection
 #Use image path for parameter
-@router.post("/post_defectLocation_for_model")
-async def post_defectlo_lis_model(build_path : BuildingPath):
+# @router.post("/post_defectLocation_for_model")
 
-    #get position's image path and model path
-    img_path = os.path.join(build_path.building_path) #image path for model
-    model_path = os.path.join('bestv3.pt')
-    model = YOLO(model_path)
-    cap = cv2.VideoCapture(img_path)
-
-    find_image = collection_Image.find({},{"image_path": build_path.building_path})
-
-    for each_doc in find_image:
-        image_id = str(each_doc['_id'])
-
-    while True:
-        ret, img = cap.read()
-    
-        if not ret: 
-            break
-    
-        results = model.predict(img)
-
-        for r in results:
-            annotator = Annotator(img,font_size=0.1)
-        
-            boxes = r.boxes
-            for box in boxes:
-                f = box.xywhn[0]
-                Xn = float(f[0])
-                Yn = float(f[1])
-                Weighthn = float(f[2])
-                Heighthn = float(f[3])
-
-                g = box.cls[0]
-                clazz = int(g)
-            
-                defect_location = DefectLocation(class_type=clazz, x=Xn, y=Yn, w=Weighthn, h=Heighthn, is_user_verified=False)
-
-                # Convert DefectLocation instance to dictionary
-                defectlocation_doc = defect_location.dict()
-
-                defectlocation_doc['image_id'] = image_id #image_id
-                class_type = defectlocation_doc['class_type']
-                class_data = collection_Defect.find({"defect_class" : class_type})
-                for each_doc in class_data:
-                    class_name = each_doc['defect_class_name']
-                defectlocation_doc['class_name'] = class_name
-                collection_DefectLocation.insert_one(defectlocation_doc)
-                defectlocation_doc.clear()
-        img = annotator.result()
-
-    cap.release()
-    cv2.destroyAllWindows()
 
 # Delete Request Method for renew defect
 @router.delete("/delete_for_renew")
@@ -646,7 +625,7 @@ async def delete_for_renew(id_image : ImageId):
 # Delete Request Method for redefind defect by image_id
 @router.delete("/defectlo/{image_id}")
 async def delete_defectlo_lis(id_image : ImageId):
-    defectloc_image = collection_DefectLocation.find({"image_id": ObjectId(id_image.image_id)})
+    defectloc_image = collection_DefectLocation.find({"image_id": str(id_image.image_id)})
     
     for each_doc in defectloc_image:
         defectlo_id = each_doc['_id']
@@ -758,8 +737,231 @@ async def delete_factory_permis(id_facto : FactoryId):
 #     collection_name.find_one_and_delete({"_id": ObjectId(id)})
 
 #-------------------------------------------------------Video-------------------------------------------------------
-@router.post("/upload_video_file")
-async def upload_video(fileList: List[UploadFile]):
+def extract_metadata_from_srt(srt_file):
+    metadata = []
+    prev_lat = None
+    prev_lon = None
+    for srt in srt_file:
+        with open(f'{srt}.srt', 'r') as f:
+            lines = f.readlines()
+            metadata_block = {}
+            for line in lines:
+                if line.strip():  # If line is not empty
+                    if re.match(r'^\d+$', line, re.MULTILINE):
+                        metadata_block['frame'] = line.replace('\n', '')
+                    if re.search(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d{3}', line):
+                        metadata_block['datetime'] = line.replace('\n', '')
+                    matches = re.findall(r'\[(.*?)\]', line)
+                    for match in matches:
+                        if ',' in match:
+                            value = match.split(',' , 1)
+                            key1, value1 = value[0].split(':', 1)
+                            key2, value2 = value[1].split(':', 1)
+                            metadata_block[key1.strip()] = value1.strip()
+                            metadata_block[key2.strip()] = value2.strip()
+                        elif 'alt' in match:
+                            key1, value1, key2, value2 = match.split()
+                            key1 = key1.replace(':', '')
+                            key2 = key2.replace(':', '')
+                            metadata_block[key1.strip()] = value1.strip()
+                            metadata_block[key2.strip()] = value2.strip()
+                        else:
+                            key, value = match.split(':', 1)
+                            metadata_block[key.strip()] = value.strip()
+                else:
+                    if 'latitude' in metadata_block and 'longitude' in metadata_block:
+                        if not prev_lat or abs(prev_lat - float(metadata_block['latitude'])) >= 0.000005 or abs(prev_lon - float(metadata_block['longitude'])) >= 0.000005:
+                            metadata.append(metadata_block)
+                            prev_lat = float(metadata_block['latitude'])
+                            prev_lon = float(metadata_block['longitude'])
+                        metadata_block = {}
+        # Append the last metadata block
+            if 'latitude' in metadata_block and 'longitude' in metadata_block:
+                if abs(prev_lat - float(metadata_block['latitude'])) >= 0.000005 or abs(prev_lon - float(metadata_block['longitude'])) >= 0.000005:
+                    metadata.append(metadata_block)
+                    prev_lat = float(metadata_block['latitude'])
+                    prev_lon = float(metadata_block['longitude'])   
+    return metadata
+
+def calculate_corners(frame, center_latitude, center_longitude, width = 2.68, height = 3.531):
+    # Earth's radius in meters
+    earth_radius = 6378137.0
+
+    # 1 meter in degrees (approximately)
+    meter_degrees = 1.0 / (2 * math.pi * earth_radius / 360)
+
+    # Convert width and height from meters to degrees
+    width_degrees = width * meter_degrees
+    height_degrees = height * meter_degrees
+
+    # Calculate corner coordinates
+    top_left_latitude = center_latitude + (height_degrees / 2)
+    top_left_longitude = center_longitude - (width_degrees / 2)
+    bottom_right_latitude = center_latitude - (height_degrees / 2)
+    bottom_right_longitude = center_longitude + (width_degrees / 2)
+
+    return {
+        "frame": frame,
+        "center": (center_latitude, center_longitude),
+        "top_left": (top_left_latitude, top_left_longitude),
+        "bottom_right": (bottom_right_latitude, bottom_right_longitude),
+        "top_right": (top_left_latitude, bottom_right_longitude),
+        "bottom_left": (bottom_right_latitude, top_left_longitude)
+    }
+
+def rectangles_overlap(rect1, rect2, ratio):
+    # Extract coordinates of rectangles
+    A_maxY, A_minX = rect1['top_left']
+    A_minY, A_maxX = rect1['bottom_right']
+    
+    B_maxY, B_minX = rect2['top_left'] 
+    B_minY, B_maxX = rect2['bottom_right']
+
+    # Calculate the width and height of each rectangle
+    width_A = A_maxX - A_minX
+    height_A = A_maxY - A_minY
+    width_B = B_maxX - B_minX
+    height_B = B_maxY - B_minY
+
+    # Calculate the coordinates of the intersection rectangle
+    inter_width = min(A_maxX, B_maxX) - max(A_minX, B_minX)
+    inter_height = min(A_maxY, B_maxY) - max(A_minY, B_minY)
+
+    # If there is no intersection, return False
+    if inter_width <= 0 or inter_height <= 0:
+        return False
+
+    # return True
+    # Calculate the area of intersection
+    inter_area = inter_width * inter_height
+
+    # # Calculate the total area of each rectangle
+    area_A = width_A * height_A
+    area_B = width_B * height_B
+
+    # # Calculate the minimum allowed overlap area (10% of the smaller rectangle)
+    min_overlap_area = min(area_A, area_B) * ratio
+
+    # # Check if the intersection area is greater than or equal to the minimum allowed overlap area
+    if inter_area >= min_overlap_area:
+        return True
+    else:
+        return False
+
+def find_non_overlapping_rectangles(rectangles):
+    non_overlapping_rectangles = []
+    num_rectangles = len(rectangles)
+    moving_dir = None
+    check_dir = tuple(abs(t1-t2) for t1, t2 in zip(rectangles[0]['center'], rectangles[1]['center']))
+    if check_dir[0] >= 0.000005:
+        moving_dir = "y"
+    elif check_dir[1] >= 0.000005:
+        moving_dir = "x"
+    cur_dir = None
+    change_dir = False
+    row = 1
+    output = {}
+    output[str(row)] = []
+    for i in range(1, num_rectangles):
+        if tuple(abs(t1-t2) for t1, t2 in zip(rectangles[i-1]['center'], rectangles[i]['center']))[0] >= 0.000005:
+            cur_dir = "y"
+        elif tuple(abs(t1-t2) for t1, t2 in zip(rectangles[i-1]['center'], rectangles[i]['center']))[1] >= 0.000005:
+            cur_dir = "x"
+        
+        if moving_dir == cur_dir and not change_dir:
+            is_overlap = False
+            for j in non_overlapping_rectangles:
+                if rectangles_overlap(rectangles[i],j,0):
+                    is_overlap = True
+                    break
+            if not is_overlap and rectangles[i] not in non_overlapping_rectangles:
+                non_overlapping_rectangles.append(rectangles[i])
+                output[str(row)].append(rectangles[i])
+                non_overlapping_rectangles = sorted(non_overlapping_rectangles, key=lambda x: int(x['frame']))
+        else:
+            is_overlap = False
+            for j in non_overlapping_rectangles:
+                if rectangles_overlap(rectangles[i-1],j,0.5):
+                    is_overlap = True
+                    break
+            if rectangles[i-1] not in non_overlapping_rectangles and not change_dir:
+                if is_overlap:
+                    non_overlapping_rectangles = non_overlapping_rectangles[:-1]
+                    output[str(row)] = output[str(row)][:-1]
+                if abs(int(non_overlapping_rectangles[-1]['frame']) - int(rectangles[i-1]['frame'])) < 700:
+                    non_overlapping_rectangles.append(rectangles[i-1])
+                    output[str(row)].append(rectangles[i-1])
+                elif not is_overlap and abs(int(non_overlapping_rectangles[-1]['frame']) - int(rectangles[i-1]['frame'])) >= 700:
+                    non_overlapping_rectangles = non_overlapping_rectangles[:-1]
+                non_overlapping_rectangles = sorted(non_overlapping_rectangles, key=lambda x: int(x['frame']))
+            change_dir = True
+            if moving_dir == cur_dir and rectangles[i-1] not in non_overlapping_rectangles and change_dir:
+                if is_overlap:
+                    non_overlapping_rectangles = non_overlapping_rectangles[:-1]
+                    output[str(row)] = output[str(row)][:-1]
+                non_overlapping_rectangles.append(rectangles[i-1])
+                row += 1
+                output[str(row)] = []
+                output[str(row)].append(rectangles[i-1])
+                non_overlapping_rectangles = sorted(non_overlapping_rectangles, key=lambda x: int(x['frame']))
+                change_dir = False
+                
+    if row%2 == 0:
+        first_rect = output[str(row)][0]
+        output[str(row)] = output[str(row)][:1]
+        for i in range(rectangles.index(first_rect),num_rectangles):
+            is_overlap = False
+            for j in output[str(row)]:
+                if rectangles_overlap(rectangles[i],j,0.01):
+                    is_overlap = True
+                    break
+            if not is_overlap and rectangles[i] not in output[str(row)]:
+                output[str(row)].append(rectangles[i])
+    max_length = max(len(value) for value in output.values())
+    output = {key: value for key, value in output.items() if len(value) == max_length}            
+
+    return output
+
+def add_gps_metadata(image_file, metadata):
+    photo = gpsphoto.GPSPhoto(image_file)
+    info = gpsphoto.GPSInfo((float(metadata['latitude']),float(metadata['longitude'])), alt=int(float(metadata['abs_alt'])) ,timeStamp=datetime.strptime(metadata['datetime'], "%Y-%m-%d %H:%M:%S.%f"))
+    photo.modGPSData(info, image_file)
+
+def process_video(video_file, data, count, out_dir, index):
+    # Open the video file
+    cap = cv2.VideoCapture(video_file)
+    history = collection_history.find_one({'history_path': out_dir})
+    history_id = str(history['_id'])
+    frame_count = count
+    while cap.isOpened():
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int((data[frame_count])['frame']))
+        ret, frame = cap.read()
+        if not ret:
+            break
+        # Save the frame as an image
+        img_out = f'{out_dir}/frame_{frame_count}.jpg'
+        cv2.imwrite(img_out, frame)
+
+        add_gps_metadata(img_out, data[frame_count])
+        
+        image = Image(
+            image_path= img_out,
+            x_index= index[frame_count][0],
+            y_index= index[frame_count][1],
+            history_id=history_id
+        )
+        image_doc = dict(image)
+        collection_Image.insert_one(image_doc)
+
+        frame_count += 1
+        if frame_count >= len(data):
+            break
+
+    cap.release()
+    return frame_count
+
+@router.post("/upload_video_srt_file")
+async def upload_video_srt(fileList: List[UploadFile]):
     file_path = str(uuid.uuid4())
     os.makedirs(f"data/video/{file_path}", exist_ok=True)
     for file in fileList:
@@ -777,43 +979,101 @@ async def upload_video(fileList: List[UploadFile]):
 
 @router.post("/extract_video")
 async def extract_video(path: ExtractVideo):
-    video_paths = glob.glob(f'{path.input_dir}/*.mp4')
-    fps = 1
     frame_count = 0
-    digits = len(str(len(video_paths) * 323))
+    directory = path.input_dir
+    file_names_without_extension = set()
 
-    for video_path in video_paths:
-        cap = cv2.VideoCapture(video_path)
+    for file in os.listdir(directory):
+        file_name, file_extension = os.path.splitext(file)
+        if file_extension != '':
+            file_names_without_extension.add(f'{directory}/{file_name}')
 
-        if not cap.isOpened():
-            print(f"Error: Could not open video file '{video_path}'.")
-            continue
-
-        frame_interval = int(cap.get(cv2.CAP_PROP_FPS) / fps)
-
-        while cap.isOpened():
-        # Read a frame from the video
-            ret, frame = cap.read()
-
-        # Check if the frame was read successfully
-            if not ret:
-                break
-
-        # Increment frame count
-            frame_count += 1
-
-        # Process the frame (you can perform any operations here if needed)
-        # For example, you can save the frame to a file
-            frame_filename = f'{path.output_dir}/{str(frame_count).zfill(digits)}.jpg'
-            cv2.imwrite(frame_filename, frame)
-
-        # Skip frames to match the desired frame extraction rate
-            for _ in range(frame_interval - 1):
-                cap.grab()
-
-    # Release the VideoCapture object
-        cap.release()
+    for file in file_names_without_extension:
+        metadata = extract_metadata_from_srt(file_names_without_extension)
+        rect = []
+        for coor in metadata:
+            corner = calculate_corners(int(coor['frame']), float(coor['latitude']), float(coor['longitude']))
+            rect.append(corner)
+        result = [list(i) for i in find_non_overlapping_rectangles(rect).values()]
+        row = 0
+        ascending_lat = tuple(t1-t2 for t1, t2 in zip(result[0][0]['center'], result[0][-1]['center']))[0] < 0
+        ascending_lon = tuple(t1-t2 for t1, t2 in zip(result[0][0]['center'], result[0][-1]['center']))[1] < 0
+        data = [[],[]]
+        for i in result:
+            if tuple(abs(t1-t2) for t1, t2 in zip(i[0]['center'], i[-1]['center']))[0] >= 0.00005:
+                if ascending_lat:
+                    i = sorted(i, key=lambda x: float(x['center'][0]))
+                else:
+                    i = sorted(i, key=lambda x: float(x['center'][0]), reverse=True)
+                for j in range(0, len(i)):
+                    data[0].append(i[(len(i)-1-j)])
+                    data[1].append((row, j))
+            elif tuple(abs(t1-t2) for t1, t2 in zip(i[0]['center'], i[-1]['center']))[1] >= 0.00005:
+                if ascending_lon:
+                    i = sorted(i, key=lambda x: float(x['center'][1]))
+                else:
+                    i = sorted(i, key=lambda x: float(x['center'][1]), reverse=True)
+                for j in range(len(i)-1, -1, -1):
+                    data[0].append(i[(len(i)-1-j)])
+                    data[1].append((row, j))
+            row += 1
+        final_data = []
+        for index in data[0]:
+            for d in metadata:
+                if int(d['frame']) == int(index['frame']):
+                    final_data.append(d)
+        frame_count = process_video(f'{directory}/{file_name}.MP4', final_data, frame_count, path.output_dir, data[1])
 
     shutil.rmtree(path.input_dir)
 
+    post_defectlo_lis_model(path.output_dir)
+
     return {"message": "extract video complete"}
+
+def post_defectlo_lis_model(path : str):
+    # print('history_path', path.history_path)
+    current_dir = os.path.dirname(__file__)
+    #get position's image path and model path
+    img_path = glob.glob(f'{os.path.dirname(current_dir)}/{path}/*.jpg')
+    # print(img_path)
+    # img_path = os.path.join(path.history_path) #image path for model
+    model_path = os.path.join('bestv3.pt')
+    model = YOLO(model_path)
+    for image in img_path:
+        img = cv2.imread(image)
+        # print(image.split('\\'))
+        split_str = image.split('\\')
+        find_image = collection_Image.find_one({"image_path": f'{path}/{split_str[-1]}'})
+    
+        results = model.predict(img)
+
+        for r in results:
+            annotator = Annotator(img,font_size=0.1)
+        
+            boxes = r.boxes
+            for box in boxes:
+                f = box.xywhn[0]
+                Xn = float(f[0])
+                Yn = float(f[1])
+                Weighthn = float(f[2])
+                Heighthn = float(f[3])
+
+                g = box.cls[0]
+                clazz = int(g)
+            
+                defect_location = DefectLocation(class_type=clazz, x=Xn, y=Yn, w=Weighthn, h=Heighthn, is_user_verified=False)
+
+                # Convert DefectLocation instance to dictionary
+                defectlocation_doc = defect_location.dict()
+
+                defectlocation_doc['image_id'] = str(find_image['_id']) #image_id
+                class_type = defectlocation_doc['class_type']
+                class_data = collection_Defect.find({"defect_class" : class_type})
+                for each_doc in class_data:
+                    class_name = each_doc['defect_class_name']
+                defectlocation_doc['class_name'] = class_name
+                collection_DefectLocation.insert_one(defectlocation_doc)
+                defectlocation_doc.clear()
+        img = annotator.result()
+
+    collection_history.find_one_and_update({"history_path": path}, {'$set': {'is_process' : True}})

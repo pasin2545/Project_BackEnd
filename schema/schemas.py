@@ -30,8 +30,6 @@ def individual_serial_build(build) -> dict:
         "building_latitude" : build["building_latitude"],
         "building_longitude" : build["building_longitude"],
         "data_location" : build["data_location"],
-        "defect_sum" : build["defect_sum"],
-        "each_defect_type_sum" : build["each_defect_type_sum"],
         "factory_id" : str(build["factory_id"])
     }
 
@@ -41,6 +39,7 @@ def individual_serial_history(histo) -> dict:
         "create_date" : histo["create_date"],
         "create_time" : histo["create_time"],
         "is_process" : histo["is_process"],
+        "history_path" : histo["history_path"],
         "building_id" : str(histo["building_id"])
     }
 
@@ -48,8 +47,8 @@ def individual_serial_image(img) -> dict:
     return{
         "image_id" : str(img["_id"]),
         "image_path" : img["image_path"],
-        "stitched_location_x" : img["stitched_location_x"],
-        "stitched_location_y" : img["stitched_location_y"],
+        "x_index" : img["x_index"],
+        "y_index" : img["y_index"],
         "history_id" : str(img["history_id"])
     }
 

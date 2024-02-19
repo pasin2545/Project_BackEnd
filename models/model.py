@@ -21,16 +21,22 @@ class Building(BaseModel):
     building_length : float
     building_width : float
     building_latitude : str
-    building_longitude :str
+    building_longitude : str
     data_location : str
-    defect_sum : int
-    each_defect_type_sum : str
+    factory_id : str
+
+class CreateBuildingRequest(BaseModel):
+    building_name : str
+    building_length : float
+    building_width : float
+    building_latitude : str
+    building_longitude :str
     factory_id : str
 
 class Image(BaseModel):
     image_path :str
-    stitched_location_x : float
-    stitched_location_y : float
+    x_index : int
+    y_index : int
     history_id : str
 
 class DefectLocation(BaseModel):
@@ -103,8 +109,8 @@ class FactoryId(BaseModel):
 class BuildingId(BaseModel):
     build_id : str
 
-class BuildingPath(BaseModel):
-    building_path : str
+class HistoryPath(BaseModel):
+    history_path : str
 
 class ImagePath(BaseModel):
     image_path : str
@@ -127,13 +133,8 @@ class History(BaseModel):
     create_date : str
     create_time : str
     is_process : bool = False
+    history_path : str
     building_id : str
-
-class Image(BaseModel):
-    image_path :str
-    stitched_location_x : float
-    stitched_location_y : float
-    history_id : str
 
 class HistoryId(BaseModel):
     histo_id : str
