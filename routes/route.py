@@ -137,7 +137,7 @@ async def create_admin(create_admin_request: CreateAdminRequest):
     create_user(create_admin_model)
     return {"message": "User created successfully"}
     
-@router.post("/token")
+@router.post("/login_token")
 async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]) -> Token:
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
