@@ -187,6 +187,8 @@ async def put_user_verified(verified : VerifiedUser):
         collection_user.update_one({'username' : verified.username}, {'$set': {'is_verified' : verified.verified}})
     else:
         raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
+    
+    return {"message": 'User Verified'}
 
 #PUT Request Method for change password
 @router.put("/put_change_password")
@@ -203,6 +205,8 @@ async def put_user_password(userchange : UserChangePassword):
     else:
         raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
 
+    return {"message": 'Password Changed'}
+
 @router.put("/admin_change_password")
 async def put_admin_password(adminchange : AdminChangePassword):
     who_user = collection_user.find_one({'username' : adminchange.username})
@@ -213,11 +217,15 @@ async def put_admin_password(adminchange : AdminChangePassword):
     else:
         raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
 
+    return {"message": 'Password Changed'}
+
 # Delete User Method
 @router.delete("/user/{username}")
 async def delete_user(user_name : UsernameInput) :
     await delete_user_permis(UsernameInput(username = str(user_name.username)))
     collection_user.find_one_and_delete({'username' : user_name.username})
+
+    return {"message": 'User Deleted'}
 
 
 #-------------------------------------------------------Factory-------------------------------------------------------
@@ -319,10 +327,14 @@ async def put_change_facto_status(id_facto : FactoryId):
         elif find_factory['is_disable'] == False:
             collection_factory.update_one({'_id' : ObjectId(id_facto.facto_id)},{'$set': {'is_disable' : True}})
 
+    return {"message": 'Factory Status Updated'}
+
 #POST Request Method
 @router.post("/post_factory")
 async def post_facto_lis(facto: Factory):
     collection_factory.insert_one(dict(facto))
+
+    return {"message": 'Factory Created'}
 
 #Delete Factory and delete every thing about it.
 @router.delete("/factory/{factory_name_and_detail}")
@@ -338,6 +350,8 @@ async def delete_facto(id_facto : FactoryId):
     rm_factory = collection_factory.find_one_and_delete({"_id": ObjectId(id_facto.facto_id)})
     fac_id = rm_factory['_id']
     shutil.rmtree(f'data/image/{fac_id}')
+
+    return {"message": 'Factory Deleted'}
     
 #-------------------------------------------------------Building--------------------------------------------------------
 
@@ -369,6 +383,8 @@ async def put_building_detail(detail : BuildingDetail):
     else:
         raise HTTPException(status_code=404, detail=f"User '{username_veri}' not found.")
 
+    return {"message": 'Building Detail Changed'}
+
 #POST Request Method
 @router.post("/post_building")
 async def post_build_lis(build: CreateBuildingRequest):
@@ -395,6 +411,8 @@ async def post_build_lis(build: CreateBuildingRequest):
     else:
         raise HTTPException(status_code=404, detail=f"Building '{build.building_name}' already created.")
 
+    {"message": 'Building Created'}
+
 #Delete Building and all about it
 @router.delete("/building/{building_id}")
 async def delete_building(id_building : BuildingId):
@@ -407,6 +425,8 @@ async def delete_building(id_building : BuildingId):
     
     rm_building = collection_building.find_one_and_delete({'_id' : ObjectId(id_building.build_id)})
     shutil.rmtree(rm_building['data_location'])
+
+    return {"message": 'Building Deleted'}
 
 #-------------------------------------------------------History-----------------------------------------------------
 
@@ -438,6 +458,7 @@ async def post_history(id_building : BuildingId) :
     os.makedirs(f'{building_dir}/{current_datetime_bangkok.strftime("%d-%m-%Y_%H-%M-%S")}', exist_ok=True)
     history_doc = dict(history)
     collection_history.insert_one(history_doc)
+    return {"message": 'History Created'}
 
 @router.delete("/delete_history")
 async def delete_history(id_histo : HistoryId):
@@ -450,6 +471,7 @@ async def delete_history(id_histo : HistoryId):
     
     rm_history = collection_history.find_one_and_delete({'_id' : ObjectId(id_histo.histo_id)})
     shutil.rmtree(rm_history['history_path'])
+    return {"message": 'History Deleted'}
 
 #-------------------------------------------------------Image-------------------------------------------------------
 
@@ -482,6 +504,8 @@ async def post_image_lis(img: Image):
     image_doc = dict(img)
     collection_Image.insert_one(image_doc)
 
+    return {"message": 'Image Created'}
+
 # Delete Request Method for image
 @router.delete("/image/{image_path}")
 async def delete_image_lis(id_image : ImageId):
@@ -493,6 +517,8 @@ async def delete_image_lis(id_image : ImageId):
     await asyncio.gather(*tasks)
 
     collection_Image.find_one_and_delete({'_id' : ObjectId(str(which_image_id))})
+
+    return {"message": 'Image Deleted'}
 
 
 #-------------------------------------------------------DefectLocation-------------------------------------------------------
@@ -614,6 +640,8 @@ async def post_defectlo_lis_redefine(defect_with_image: DefectLocationWithImage)
 
     collection_Image.update_one({'_id': ObjectId(Image_post_id)},{'$set': {'is_user_verified' : True}})
 
+    return {"message": 'DefectLocation Verified'}
+
 
 #POST Request Method for use model detection
 #Use image path for parameter
@@ -629,6 +657,8 @@ async def delete_for_renew(id_image : ImageId):
         if each_defect['is_user_verified'] == True:
             collection_DefectLocation.find_one_and_delete({"_id" : ObjectId(each_defect['_id'])})
 
+    return {"message": 'DefectLocation Verify Renewed'}
+
 # Delete Request Method for redefind defect by image_id
 @router.delete("/defectlo/{image_id}")
 async def delete_defectlo_lis(id_image : ImageId):
@@ -637,6 +667,8 @@ async def delete_defectlo_lis(id_image : ImageId):
     for each_doc in defectloc_image:
         defectlo_id = each_doc['_id']
         collection_DefectLocation.find_one_and_delete({"_id": ObjectId(defectlo_id)})
+
+    return {"message": 'DefectLocation Deleted'}
     
     
 #-------------------------------------------------------Permission-------------------------------------------------------
@@ -701,6 +733,8 @@ async def post_permis_lis(permis: Permission):
     permis_doc.pop('factory_details' , None)
     collection_Permission.insert_one(permis_doc)
 
+    {"message": 'Permission Created'}
+
 #Delete Permission Method by user
 @router.delete("/permis_user")
 async def delete_user_permis(permis_username : UsernameInput):
@@ -714,12 +748,16 @@ async def delete_user_permis(permis_username : UsernameInput):
         for each_permis in which_permis:
             collection_Permission.find_one_and_delete(each_permis)
 
+    {"message": 'Permission Deleted'}
+
 @router.delete("/permis_facto/{permis_factory}")
 async def delete_factory_permis(id_facto : FactoryId):
 
     which_permis = collection_Permission.find({'factory_id' : ObjectId(id_facto.facto_id)})
     for each_permis in which_permis:
         collection_Permission.find_one_and_delete(each_permis)
+
+    return {"message": 'Permission Deleted'}
 
 
 #-------------------------------------------------------Defect-------------------------------------------------------
@@ -1035,7 +1073,7 @@ async def extract_video(path: ExtractVideo):
 
     post_defectlo_lis_model(path.output_dir)
 
-    return {"message": "extract video complete"}
+    return {"message": "Extract and Process Video Completed"}
 
 def post_defectlo_lis_model(path : str):
     # print('history_path', path.history_path)
