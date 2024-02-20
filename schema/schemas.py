@@ -49,6 +49,7 @@ def individual_serial_image(img) -> dict:
         "image_path" : img["image_path"],
         "x_index" : img["x_index"],
         "y_index" : img["y_index"],
+        "is_user_verified" : img["is_user_verified"],
         "history_id" : str(img["history_id"])
     }
 

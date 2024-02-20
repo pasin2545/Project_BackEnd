@@ -464,12 +464,12 @@ async def get_image_lis(history_id : str) :
     which_image = collection_Image.find(find_image_by_history_id)
     for each_image in which_image:
         which_image_id = each_image['_id']
-        find_defectlo_by_image_id = {'image_id' : ObjectId(which_image_id)}
-        defect_count = collection_DefectLocation.count_documents(find_defectlo_by_image_id)
+        # find_defectlo_by_image_id = {'image_id' : ObjectId(which_image_id)}
+        defect_count = collection_DefectLocation.count_documents({'image_id' : str(which_image_id), 'is_user_verified': each_image['is_user_verified']})
         which_image_path = each_image['image_path']
         which_image_x = each_image['x_index']
         which_image_y = each_image['y_index']
-        image_list.append({"image_id" : str(which_image_id), "image_path": which_image_path, 'x_offset': which_image_x, 'y_offset': which_image_y})
+        image_list.append({"image_id" : str(which_image_id), "image_path": which_image_path, "is_verified": each_image['is_user_verified'],'defect_count': defect_count,'x_offset': which_image_x, 'y_offset': which_image_y})
     max_x_offset = max(image_list, key=lambda x: x['x_offset'])['x_offset'] + 1
     max_y_offset = max(image_list, key=lambda x: x['y_offset'])['y_offset'] + 1
     offset = {'max_x': max_x_offset, 'max_y' : max_y_offset}
@@ -611,6 +611,8 @@ async def post_defectlo_lis_redefine(defect_with_image: DefectLocationWithImage)
         defectlocation_doc['class_name'] = class_name
         collection_DefectLocation.insert_one(defectlocation_doc)
         defectlocation_doc.clear()
+
+    collection_Image.update_one({'_id': ObjectId(Image_post_id)},{'$set': {'is_user_verified' : True}})
 
 
 #POST Request Method for use model detection

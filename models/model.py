@@ -38,6 +38,7 @@ class Image(BaseModel):
     x_index : int
     y_index : int
     history_id : str
+    is_user_verified : bool = False
 
 class DefectLocation(BaseModel):
     class_type : int
@@ -45,7 +46,7 @@ class DefectLocation(BaseModel):
     y : float
     w : float
     h : float
-    is_user_verified : bool 
+    is_user_verified : bool = False
 
 class Defect(BaseModel):
     defect_class : int
