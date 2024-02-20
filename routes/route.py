@@ -467,9 +467,14 @@ async def get_image_lis(history_id : str) :
         find_defectlo_by_image_id = {'image_id' : ObjectId(which_image_id)}
         defect_count = collection_DefectLocation.count_documents(find_defectlo_by_image_id)
         which_image_path = each_image['image_path']
-        image_list.append({"image_id" : str(which_image_id), "image_path": which_image_path})
+        which_image_x = each_image['x_index']
+        which_image_y = each_image['y_index']
+        image_list.append({"image_id" : str(which_image_id), "image_path": which_image_path, 'x_offset': which_image_x, 'y_offset': which_image_y})
+    max_x_offset = max(image_list, key=lambda x: x['x_offset'])['x_offset'] + 1
+    max_y_offset = max(image_list, key=lambda x: x['y_offset'])['y_offset'] + 1
+    offset = {'max_x': max_x_offset, 'max_y' : max_y_offset}
 
-    return image_list
+    return image_list, offset
 
 #POST Request Method
 @router.post("/post_image")
