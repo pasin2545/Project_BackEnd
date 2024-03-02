@@ -40,6 +40,7 @@ from config.database import (
     collection_Defect,
     collection_Permission,
     collection_history,
+    collection_log,
 )
 from schema.schemas import (
     list_serial_user,
@@ -50,6 +51,7 @@ from schema.schemas import (
     list_serial_defec,
     list_serial_permis,
     list_serial_histo,
+    list_serial_log,
 )
 from datetime import datetime
 import pytz
@@ -84,10 +86,18 @@ router = APIRouter()
 
 SECRET_KEY = "Roof_Surface"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60*24
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+def getCurTime():
+    current_datetime_utc = datetime.utcnow()
+    timezone_bangkok = pytz.timezone("Asia/Bangkok")
+    current_datetime_bangkok = current_datetime_utc.replace(tzinfo=pytz.utc).astimezone(
+        timezone_bangkok
+    )
+    return current_datetime_bangkok
 
 # -------------------------------------------------------Auth-------------------------------------------------------
 
@@ -184,8 +194,12 @@ async def sign_up(create_user_request: CreateUserRequest):
 
 
 @router.post("/create_admin", status_code=status.HTTP_201_CREATED)
-async def create_admin(create_admin_request: CreateAdminRequest):
+async def create_admin(current_user: Annotated[User, Depends(get_current_user)], create_admin_request: CreateAdminRequest):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
     if collection_user.find_one({"username": create_admin_request.username}):
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Failed to create new account {create_admin_request.username} as Admin due to username exist", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
         return {"message": "Username already exists"}
 
     create_admin_model = User(
@@ -199,6 +213,7 @@ async def create_admin(create_admin_request: CreateAdminRequest):
         user_verification_file_path=create_admin_request.verified_file_path,
     )
     create_user(create_admin_model)
+    collection_log.insert_one({"actor": current_user.username , "message" : f"Create new account {create_admin_request.username} as Admin", "timestamp": getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
     return {"message": "User created successfully"}
 
 
@@ -215,6 +230,7 @@ async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]) -> T
     access_token = create_access_token(
         data={"sub": form_data.username}, expires_delta=access_token_expires
     )
+    collection_log.insert_one({"actor": form_data.username , "message" : f"Logged in", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
     return Token(access_token=access_token, token_type="bearer")
 
 
@@ -229,7 +245,11 @@ async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]
 
 # GET Request Method for verified user
 @router.get("/get_user_verified")
-async def get_usr_verified():
+async def get_usr_verified(current_user: Annotated[User, Depends(get_current_user)]):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
+
     usr_lis = list_serial_user(
         collection_user.find({"is_verified": True, "is_admin": False})
     )
@@ -238,7 +258,11 @@ async def get_usr_verified():
 
 # GET Request Method for unverified user
 @router.get("/get_user_unverified")
-async def get_usr_unverified():
+async def get_usr_unverified(current_user: Annotated[User, Depends(get_current_user)]):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
+
     usr_lis = list_serial_user(
         collection_user.find({"is_verified": False, "is_admin": False})
     )
@@ -246,7 +270,11 @@ async def get_usr_unverified():
 
 
 @router.get("/get_admin")
-async def get_admin():
+async def get_admin(current_user: Annotated[User, Depends(get_current_user)]):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
+
     usr_list = list_serial_user(
         collection_user.find({"is_admin": True, "is_verified": True})
     )
@@ -255,7 +283,11 @@ async def get_admin():
 
 # PUT Request Method for verified user
 @router.put("/put_verified")
-async def put_user_verified(verified: VerifiedUser):
+async def put_user_verified(current_user: Annotated[User, Depends(get_current_user)], verified: VerifiedUser):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
+    
     who_user = collection_user.find_one({"username": verified.username})
 
     if who_user:
@@ -263,17 +295,17 @@ async def put_user_verified(verified: VerifiedUser):
             {"username": verified.username},
             {"$set": {"is_verified": verified.verified}},
         )
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Verify user {verified.username}", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "User Verified"}
     else:
         raise HTTPException(
             status_code=404, detail=f"User '{verified.username}' not found."
         )
 
-    return {"message": "User Verified"}
-
 
 # PUT Request Method for change password
 @router.put("/put_change_password")
-async def put_user_password(userchange: UserChangePassword):
+async def put_user_password(current_user: Annotated[User, Depends(get_current_user)], userchange: UserChangePassword):
     who_user = collection_user.find_one({"username": userchange.username})
 
     if who_user:
@@ -283,6 +315,7 @@ async def put_user_password(userchange: UserChangePassword):
                 {"username": userchange.username},
                 {"$set": {"password": hashed_password}},
             )
+            collection_log.insert_one({"actor": current_user.username , "message" : f"Change their password", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
             return {"message": "Password updated successfully"}
         else:
             raise HTTPException(status_code=400, detail="Old password is incorrect")
@@ -291,11 +324,13 @@ async def put_user_password(userchange: UserChangePassword):
             status_code=404, detail=f"User '{userchange.username}' not found."
         )
 
-    return {"message": "Password Changed"}
-
 
 @router.put("/admin_change_password")
-async def put_admin_password(adminchange: AdminChangePassword):
+async def put_admin_password(current_user: Annotated[User, Depends(get_current_user)], adminchange: AdminChangePassword):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
+
     who_user = collection_user.find_one({"username": adminchange.username})
 
     if who_user:
@@ -303,17 +338,20 @@ async def put_admin_password(adminchange: AdminChangePassword):
         collection_user.update_one(
             {"username": adminchange.username}, {"$set": {"password": hashed_password}}
         )
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Change user {adminchange.username} password", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Password Changed"}
     else:
         raise HTTPException(
             status_code=404, detail=f"User '{adminchange.username}' not found."
         )
 
-    return {"message": "Password Changed"}
-
 
 # Delete User Method
 @router.delete("/user")
-async def delete_user(user_name: UsernameInput):
+async def delete_user(current_user: Annotated[User, Depends(get_current_user)], user_name: UsernameInput):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
     await delete_user_permis(UsernameInput(username=str(user_name.username)))
     collection_user.find_one_and_delete({"username": user_name.username})
 
@@ -325,7 +363,7 @@ async def delete_user(user_name: UsernameInput):
 
 # GET Request Method for factory information
 @router.get("/get_factory_info")
-async def get_facto_info(facto_id: str):
+async def get_facto_info(current_user: Annotated[User, Depends(get_current_user)], facto_id: str):
     facto_info = collection_factory.find_one({"_id": ObjectId(facto_id)})
     if facto_info:
         facto_info["_id"] = str(facto_info["_id"])
@@ -334,21 +372,32 @@ async def get_facto_info(facto_id: str):
 
 # GET Request Method for admin look factory in add factory page
 @router.get("/get_admin_factory")
-async def get_admin_add_permis():
+async def get_admin_add_permis(current_user: Annotated[User, Depends(get_current_user)]):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
+
     facto_lis = list_serial_factory(collection_factory.find({"is_disable": False}))
     return facto_lis
 
 
 # GET Request Method for admin factory manage page
 @router.get("/get_admin_manage_factory")
-async def get_admin_manage():
+async def get_admin_manage(current_user: Annotated[User, Depends(get_current_user)]):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
+
     facto_lis = list_serial_factory(collection_factory.find())
     return facto_lis
 
 
 # GET Request Method for show factory to user
 @router.get("/get_user_factory")
-async def get_usr_facto_lis(username: str):
+async def get_usr_facto_lis(current_user: Annotated[User, Depends(get_current_user)], username: str):
+    if not current_user.is_verified:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as verified user", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Verified"}
     factories_list = []
 
     who_user = collection_user.find_one({"username": username})
@@ -389,7 +438,11 @@ async def get_usr_facto_lis(username: str):
 
 # Get Method for admin permission summary
 @router.get("/permission_summary")
-async def get_permission_summary():
+async def get_permission_summary(current_user: Annotated[User, Depends(get_current_user)]):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
+
     factory_list = []
     all_factory = collection_factory.find()
 
@@ -421,8 +474,11 @@ async def get_permission_summary():
 
 # PUT Method for admin change between factory (disable=Ture) and (enable=False)
 @router.put("/put_change_facto_status")
-async def put_change_facto_status(id_facto: FactoryId):
-
+async def put_change_facto_status(current_user: Annotated[User, Depends(get_current_user)], id_facto: FactoryId):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
+    
     find_factory = collection_factory.find_one({"_id": ObjectId(id_facto.facto_id)})
 
     if find_factory:
@@ -431,25 +487,31 @@ async def put_change_facto_status(id_facto: FactoryId):
             collection_factory.update_one(
                 {"_id": ObjectId(id_facto.facto_id)}, {"$set": {"is_disable": False}}
             )
+            collection_log.insert_one({"actor": current_user.username , "message" : f"Activate factory {find_facto['factory_name']}", "timestamp": getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
         elif find_factory["is_disable"] == False:
             collection_factory.update_one(
                 {"_id": ObjectId(id_facto.facto_id)}, {"$set": {"is_disable": True}}
             )
+            collection_log.insert_one({"actor": current_user.username , "message" : f"Disable factory {find_facto['factory_name']}", "timestamp": getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
 
     return {"message": "Factory Status Updated"}
 
 
 # POST Request Method
 @router.post("/post_factory")
-async def post_facto_lis(facto: Factory):
+async def post_facto_lis(current_user: Annotated[User, Depends(get_current_user)], facto: Factory):
     collection_factory.insert_one(dict(facto))
-
+    collection_log.insert_one({"actor": current_user.username , "message" : f"Create new factory {facto.factory_name}", "timestamp": getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        
     return {"message": "Factory Created"}
 
 
 # Delete Factory and delete every thing about it.
 @router.delete("/factory")
-async def delete_facto(id_facto: FactoryId):
+async def delete_facto(current_user: Annotated[User, Depends(get_current_user)], id_facto: FactoryId):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
 
     find_building_by_facto_id = collection_building.find(
         {"factory_id": str(id_facto.facto_id)}
@@ -468,6 +530,7 @@ async def delete_facto(id_facto: FactoryId):
     if os.path.exists(f"data/image/{fac_id}") and os.path.isdir(f"data/image/{fac_id}"):
         shutil.rmtree(f"data/image/{fac_id}")
 
+    collection_log.insert_one({"actor": current_user.username , "message" : f"Delete factory {rm_factory['factory_name']}", "timestamp": getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
     return {"message": "Factory Deleted"}
 
 
@@ -476,7 +539,7 @@ async def delete_facto(id_facto: FactoryId):
 
 # GET Request Method for factory information
 @router.get("/get_building_info")
-async def get_build_info(build_id: str):
+async def get_build_info(current_user: Annotated[User, Depends(get_current_user)], build_id: str):
     obj_id = ObjectId(build_id)
     build_info = collection_building.find_one({"_id": obj_id})
     if build_info:
@@ -487,13 +550,17 @@ async def get_build_info(build_id: str):
 
 # GET Request Method for user
 @router.get("/get_building")
-async def get_build_lis():
+async def get_build_lis(current_user: Annotated[User, Depends(get_current_user)]):
     build_lis = list_serial_build(collection_building.find())
     return build_lis
 
 
 @router.put("/change_building_detail")
-async def put_building_detail(detail: BuildingDetail):
+async def put_building_detail(current_user: Annotated[User, Depends(get_current_user)], detail: BuildingDetail):
+    if not current_user.is_verified:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as verified user", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Verified"}
+
     which_building = collection_building.find_one({"_id": ObjectId(detail.building_id)})
 
     if which_building:
@@ -513,15 +580,19 @@ async def put_building_detail(detail: BuildingDetail):
             {"_id": ObjectId(detail.building_id)},
             {"$set": {"building_longitude": detail.building_longitude}},
         )
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Update building detail", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Building Detail Changed"}
     else:
         raise HTTPException(status_code=404, detail=f"Building not found.")
-
-    return {"message": "Building Detail Changed"}
 
 
 # POST Request Method
 @router.post("/post_building")
-async def post_build_lis(build: CreateBuildingRequest):
+async def post_build_lis(current_user: Annotated[User, Depends(get_current_user)], build: CreateBuildingRequest):
+    if not current_user.is_verified:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as verified user", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Verified"}
+
     check_exist = collection_building.find_one(
         {"factory_id": build.factory_id, "building_name": build.building_name}
     )
@@ -546,18 +617,18 @@ async def post_build_lis(build: CreateBuildingRequest):
             build_doc, {"$set": {"data_location": building_path}}
         )
         os.makedirs(building_path, exist_ok=True)
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Add new building", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Building Created"}
     else:
         raise HTTPException(
             status_code=404, detail=f"Building '{build.building_name}' already created."
         )
 
-    return {"message": "Building Created"}
-
 
 # Delete Building and all about it
 @router.delete("/building")
 async def delete_building(id_building: BuildingId):
-
+    
     find_history_by_building_id = collection_history.find(
         {"building_id": id_building.build_id}
     )
@@ -577,6 +648,7 @@ async def delete_building(id_building: BuildingId):
     ):
         shutil.rmtree(rm_building["data_location"])
 
+    collection_log.insert_one({"actor": current_user.username , "message" : f"Remove building", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
     return {"message": "Building Deleted"}
 
 
@@ -584,7 +656,11 @@ async def delete_building(id_building: BuildingId):
 
 
 @router.get("/get_history")
-async def get_history(id_building: str):
+async def get_history(current_user: Annotated[User, Depends(get_current_user)], id_building: str):
+    if not current_user.is_verified:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as verified user", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Verified"}
+
     histo_list = []
 
     find_history = collection_history.find({"building_id": str(id_building)})
@@ -597,12 +673,12 @@ async def get_history(id_building: str):
 
 
 @router.post("/post_history")
-async def post_history(id_building: BuildingId):
-    current_datetime_utc = datetime.utcnow()
-    timezone_bangkok = pytz.timezone("Asia/Bangkok")
-    current_datetime_bangkok = current_datetime_utc.replace(tzinfo=pytz.utc).astimezone(
-        timezone_bangkok
-    )
+async def post_history(current_user: Annotated[User, Depends(get_current_user)], id_building: BuildingId):
+    if not current_user.is_verified:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as verified user", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Verified"}
+
+    current_datetime_bangkok = getCurTime()
     building = collection_building.find_one({"_id": ObjectId(id_building.build_id)})
     building_dir = building["data_location"]
     history = History(
@@ -617,6 +693,7 @@ async def post_history(id_building: BuildingId):
     )
     history_doc = dict(history)
     collection_history.insert_one(history_doc)
+    collection_log.insert_one({"actor": current_user.username , "message" : f"Add new history", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
     return {"message": "History Created"}
 
 
@@ -640,6 +717,7 @@ async def delete_history(id_histo: HistoryId):
     ):
         shutil.rmtree(rm_history["history_path"])
 
+    collection_log.insert_one({"actor": current_user.username , "message" : f"Remove history", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
     return {"message": "History Deleted"}
 
 
@@ -648,7 +726,11 @@ async def delete_history(id_histo: HistoryId):
 
 # GET Request Method for image when need to show image which have defect
 @router.get("/get_image")
-async def get_image_lis(history_id: str):
+async def get_image_lis(current_user: Annotated[User, Depends(get_current_user)], history_id: str):
+    if not current_user.is_verified:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as verified user", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Verified"}
+
     image_list = []
 
     which_history_id = history_id
@@ -686,7 +768,7 @@ async def get_image_lis(history_id: str):
 
 # POST Request Method
 @router.post("/post_image")
-async def post_image_lis(img: Image):
+async def post_image_lis(current_user: Annotated[User, Depends(get_current_user)], img: Image):
     image_doc = dict(img)
     collection_Image.insert_one(image_doc)
 
@@ -694,8 +776,8 @@ async def post_image_lis(img: Image):
 
 
 # Delete Request Method for image
-@router.delete("/image/{image_path}")
-async def delete_image_lis(id_image: ImageId):
+@router.delete("/image")
+async def delete_image_lis(current_user: Annotated[User, Depends(get_current_user)], id_image: ImageId):
 
     tasks = []
     which_image_id = id_image.image_id
@@ -713,7 +795,11 @@ async def delete_image_lis(id_image: ImageId):
 
 # GET Request Method for show defect in picture
 @router.get("/get_defectLocation")
-async def get_defectlo_lis(image_id: str):
+async def get_defectlo_lis(current_user: Annotated[User, Depends(get_current_user)], image_id: str):
+    if not current_user.is_verified:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as verified user", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Verified"}
+
     defectlo_lis_ture = []
     defectlo_lis_false = []
 
@@ -735,7 +821,11 @@ async def get_defectlo_lis(image_id: str):
 
 # GET summary of defect and picture for history summary page
 @router.get("/get_summary_user_verified")
-async def get_summary_user_verified(histo_id: str):
+async def get_summary_user_verified(current_user: Annotated[User, Depends(get_current_user)], histo_id: str):
+    if not current_user.is_verified:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as verified user", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Verified"}
+    
     summary_list = []
     summary_system = []
     summary_user = []
@@ -820,7 +910,11 @@ async def get_summary_user_verified(histo_id: str):
 
 # POST Request Method for redefine the defect square
 @router.post("/post_defectLocation_for_redefine")
-async def post_defectlo_lis_redefine(defect_with_image: DefectLocationWithImage):
+async def post_defectlo_lis_redefine(current_user: Annotated[User, Depends(get_current_user)], defect_with_image: DefectLocationWithImage):
+    if not current_user.is_verified:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as verified user", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Verified"}
+    
     Image_post_id = str(defect_with_image.Image_post_id)
     defectlos = defect_with_image.defectlos
 
@@ -839,7 +933,7 @@ async def post_defectlo_lis_redefine(defect_with_image: DefectLocationWithImage)
     collection_Image.update_one(
         {"_id": ObjectId(Image_post_id)}, {"$set": {"is_user_verified": True}}
     )
-
+    collection_log.insert_one({"actor": current_user.username , "message" : f"Update and verify defect", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
     return {"message": "DefectLocation Verified"}
 
 
@@ -850,7 +944,11 @@ async def post_defectlo_lis_redefine(defect_with_image: DefectLocationWithImage)
 
 # Delete Request Method for renew defect
 @router.delete("/delete_for_renew")
-async def delete_for_renew(id_image: ImageId):
+async def delete_for_renew(current_user: Annotated[User, Depends(get_current_user)], id_image: ImageId):
+    if not current_user.is_verified:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as verified user", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Verified"}
+
     find_defect = collection_DefectLocation.find({"image_id": id_image.image_id})
 
     for each_defect in find_defect:
@@ -863,8 +961,9 @@ async def delete_for_renew(id_image: ImageId):
 
 
 # Delete Request Method for redefind defect by image_id
-@router.delete("/defectlo/{image_id}")
+@router.delete("/defectlo")
 async def delete_defectlo_lis(id_image: ImageId):
+
     defectloc_image = collection_DefectLocation.find(
         {"image_id": str(id_image.image_id)}
     )
@@ -879,7 +978,11 @@ async def delete_defectlo_lis(id_image: ImageId):
 # -------------------------------------------------------Permission-------------------------------------------------------
 # GET Request Method
 @router.get("/get_permission_factory")
-async def get_permis_factory(facto_id: str):
+async def get_permis_factory(current_user: Annotated[User, Depends(get_current_user)], facto_id: str):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
+
     obj_id = ObjectId(facto_id)
     find_permission = collection_Permission.find({"factory_id": obj_id})
 
@@ -898,7 +1001,11 @@ async def get_permis_factory(facto_id: str):
 
 # Get Method for show verified user who dont have permission in that factory
 @router.get("/get_not_permission_factory")
-async def get_no_permis_facto(facto_id: str):
+async def get_no_permis_facto(current_user: Annotated[User, Depends(get_current_user)], facto_id: str):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
+    
     obj_id = ObjectId(facto_id)
     verified_users = collection_user.find({"is_verified": True, "is_admin": False})
 
@@ -920,7 +1027,11 @@ async def get_no_permis_facto(facto_id: str):
 
 # Post Request Method
 @router.post("/post_permission")
-async def post_permis_lis(permis: Permission):
+async def post_permis_lis(current_user: Annotated[User, Depends(get_current_user)], permis: Permission):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
+    
     permis_doc = dict(permis)
     user_post_name = permis_doc["username"]
     factory_post_name = permis_doc["factory_name"]
@@ -948,11 +1059,16 @@ async def post_permis_lis(permis: Permission):
     permis_doc.pop("factory_details", None)
     collection_Permission.insert_one(permis_doc)
 
+    collection_log.insert_one({"actor": current_user.username , "message" : f"Add user {user_post_name} to factory {factory_post_name}", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
     return {"message": "Permission Created"}
 
 
 @router.delete("/del_permission")
-async def delete_permission(user_fac: UserFac):
+async def delete_permission(current_user: Annotated[User, Depends(get_current_user)], user_fac: UserFac):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
+
     permis = collection_Permission.find_one_and_delete(
         {
             "user_id": ObjectId(str(user_fac.user_id)),
@@ -962,6 +1078,7 @@ async def delete_permission(user_fac: UserFac):
     if not permis:
         return {"message", f"Permission {user_fac} not found"}
 
+    collection_log.insert_one({"actor": current_user.username , "message" : f"Remove user {user_post_name} from factory {factory_post_name}", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
     return {"message": "Permission Deleted"}
 
 
@@ -981,7 +1098,7 @@ async def delete_user_permis(permis_username: UsernameInput):
     return {"message": "Permission Deleted"}
 
 
-@router.delete("/permis_facto/{permis_factory}")
+@router.delete("/permis_facto")
 async def delete_factory_permis(id_facto: FactoryId):
 
     which_permis = collection_Permission.find(
@@ -996,10 +1113,16 @@ async def delete_factory_permis(id_facto: FactoryId):
 # -------------------------------------------------------File-------------------------------------------------------
 # GET Request Method
 @router.post("/get_verification_file")
-async def get_verification_file(username: UsernameInput):
+async def get_verification_file(current_user: Annotated[User, Depends(get_current_user)], username: UsernameInput):
+    if not current_user.is_admin:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as admin", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Admin"}
+    
     user = collection_user.find_one({"username": username.username})
     user_path = user["user_verification_file_path"]
     filename = user_path.split("/")[-1].split(".")[-1]
+
+    collection_log.insert_one({"actor": current_user.username , "message" : f"Download user {username.username} verification file", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
 
     return FileResponse(
         path=user_path,
@@ -1291,7 +1414,11 @@ def process_video(video_file, data, count, out_dir, index):
 
 
 @router.post("/upload_video_srt_file")
-async def upload_video_srt(fileList: List[UploadFile]):
+async def upload_video_srt(current_user: Annotated[User, Depends(get_current_user)], fileList: List[UploadFile]):
+    if not current_user.is_verified:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as verified user", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Verified"}
+
     file_path = str(uuid.uuid4())
     os.makedirs(f"data/video/{file_path}", exist_ok=True)
     for file in fileList:
@@ -1309,7 +1436,11 @@ async def upload_video_srt(fileList: List[UploadFile]):
 
 
 @router.post("/extract_video")
-async def extract_video(path: ExtractVideo):
+async def extract_video(current_user: Annotated[User, Depends(get_current_user)], path: ExtractVideo):
+    if not current_user.is_verified:
+        collection_log.insert_one({"actor": current_user.username , "message" : f"Trying to access as verified user", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
+        return {"message": "Not Verified"}
+
     frame_count = 0
     directory = path.input_dir
     file_names_without_extension = set()
@@ -1391,6 +1522,8 @@ async def extract_video(path: ExtractVideo):
         shutil.rmtree(path.input_dir)
 
     post_defectlo_lis_model(path.output_dir)
+
+    collection_log.insert_one({"actor": current_user.username , "message" : f"Upload and process video", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
 
     return {"message": "Extract and Process Video Completed"}
 
