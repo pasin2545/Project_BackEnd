@@ -618,8 +618,9 @@ async def post_build_lis(current_user: Annotated[User, Depends(get_current_user)
         )
         os.makedirs(building_path, exist_ok=True)
         collection_log.insert_one({"actor": current_user.username , "message" : f"Add new building", "timestamp" : getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
-        return {"message": "Building Created"}
+        return build_doc
     else:
+        return 
         raise HTTPException(
             status_code=404, detail=f"Building '{build.building_name}' already created."
         )
