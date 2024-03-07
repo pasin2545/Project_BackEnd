@@ -1,9 +1,10 @@
 from pymongo import MongoClient
 import certifi
+import os
 
 ca = certifi.where()
 
-client = MongoClient("mongodb+srv://63010656:JumkR7Gtj1bTuRqh@data.7pzwf1b.mongodb.net/?retryWrites=true&w=majority", tlsCAFile=ca)
+client = MongoClient('mongodb', int(os.getenv("MONGO_PORT")))
 
 db = client.Roof_Surface_Website
 
