@@ -165,8 +165,8 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
 @router.post("/upload_user_file")
 async def upload_file(file: UploadFile):
     file_path = str(uuid.uuid4())
-    os.makedirs(f"data/user_file_verified/{file_path}", exist_ok=True)
-    file_dir = f"data/user_file_verified/{file_path}/{file.filename}"
+    os.makedirs(f"/app/data/user_file_verified/{file_path}", exist_ok=True)
+    file_dir = f"/app/data/user_file_verified/{file_path}/{file.filename}"
     try:
         contents = await file.read()
         with open(file_dir, "wb") as f:
@@ -639,8 +639,8 @@ async def delete_facto(current_user: Annotated[User, Depends(get_current_user)],
     )
     fac_id = rm_factory["_id"]
 
-    if os.path.exists(f"data/image/{fac_id}") and os.path.isdir(f"data/image/{fac_id}"):
-        shutil.rmtree(f"data/image/{fac_id}")
+    if os.path.exists(f"/app/data/image/{fac_id}") and os.path.isdir(f"/app/data/image/{fac_id}"):
+        shutil.rmtree(f"/app/data/image/{fac_id}")
 
     collection_log.insert_one({"actor": current_user.username , "message" : f"Delete factory {rm_factory['factory_name']}", "timestamp": getCurTime().strftime("%d-%m-%Y_%H-%M-%S")})
     return {"message": "Factory Deleted"}
@@ -723,7 +723,7 @@ async def post_build_lis(current_user: Annotated[User, Depends(get_current_user)
         collection_building.insert_one(build_doc)
         building = collection_building.find_one(build_doc)
         building_id = str(building["_id"])
-        building_path = f"data/image/{build.factory_id}/{building_id}"
+        building_path = f"/app/data/image/{build.factory_id}/{building_id}"
         print(building_path)
         collection_building.update_one(
             build_doc, {"$set": {"data_location": building_path}}
@@ -967,6 +967,11 @@ async def get_defect(current_user: Annotated[User, Depends(get_current_user)]):
         defect_list.append(each_defect)
 
     return defect_list
+
+@router.post("/post_defect")
+async def post_defect(defect: Defect):
+    defect_doc = dict(defect)
+    collection_Defect.insert_one(defect_doc)
 
 # -------------------------------------------------------DefectLocation-------------------------------------------------------
 
@@ -1601,9 +1606,9 @@ async def upload_video_srt(current_user: Annotated[User, Depends(get_current_use
         return {"message": "Not Verified"}
 
     file_path = str(uuid.uuid4())
-    os.makedirs(f"data/video/{file_path}", exist_ok=True)
+    os.makedirs(f"/app/data/video/{file_path}", exist_ok=True)
     for file in fileList:
-        file_dir = f"data/video/{file_path}/{file.filename}"
+        file_dir = f"/app/data/video/{file_path}/{file.filename}"
         try:
             contents = await file.read()
             with open(file_dir, "wb") as f:
@@ -1615,7 +1620,7 @@ async def upload_video_srt(current_user: Annotated[User, Depends(get_current_use
         finally:
             await file.close()
 
-    return {"path": f"data/video/{file_path}"}
+    return {"path": f"/app/data/video/{file_path}"}
 
 
 @router.post("/extract_video")
@@ -1712,10 +1717,8 @@ async def extract_video(current_user: Annotated[User, Depends(get_current_user)]
 
 
 async def post_defectlo_lis_model(path: str):
-    # print('history_path', path.history_path)
-    current_dir = os.path.dirname(__file__)
     # get position's image path and model path
-    img_path = glob.glob(f"{os.path.dirname(current_dir)}/{path}/*.jpg")
+    img_path = glob.glob(f"{path}/*.jpg")
     # print(img_path)
     # img_path = os.path.join(path.history_path) #image path for model
     model_path = os.path.join("bestv40.pt")
