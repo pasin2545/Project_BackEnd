@@ -3,3 +3,4 @@
 *.pt
 routes/__pycache__/route.cpython-311.pyc
 /data
+.env
