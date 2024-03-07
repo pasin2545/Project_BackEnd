@@ -139,3 +139,7 @@ class History(BaseModel):
 
 class HistoryId(BaseModel):
     histo_id : str
+
+class UserFac(BaseModel):
+    user_id : str
+    fac_id : str

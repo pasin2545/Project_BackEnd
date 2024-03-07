@@ -78,6 +78,12 @@ def individual_serial_permis(permis) -> dict:
         "factory_id" : str(permis["factory_id"]),
     }
 
+def individual_serial_log(log) -> dict:
+    return {
+        "actor" : str(log["actor"]),
+        "message" : str(log["message"]),
+        "timestamp" : str(log["timestamp"]),
+    }
 
 def list_serial_user(usr_lis) -> list :
     return [individual_serial_user(usr) for usr in usr_lis]
@@ -103,7 +109,8 @@ def list_serial_defec(defec_lis) -> list :
 def list_serial_permis(permis_list) -> list :
     return [individual_serial_permis(permis) for permis in permis_list]
 
-
+def list_serial_log(log_list) -> list :
+    return [individual_serial_log(log) for log in log_list]
 
 
 
